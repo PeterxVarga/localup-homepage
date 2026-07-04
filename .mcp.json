@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "figma": {
+      "url": "https://mcp.figma.com/mcp",
+      "auth": "oauth",
+      "oauth": {
+        "clientName": "pi-mcp-adapter (LocalUp)"
+      },
+      "lifecycle": "lazy",
+      "requestTimeoutMs": 60000
+    }
+  }
+}
