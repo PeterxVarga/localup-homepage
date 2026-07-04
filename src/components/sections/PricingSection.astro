@@ -1,0 +1,200 @@
+---
+import Container from '../layout/Container.astro';
+import Section from '../layout/Section.astro';
+import SectionHeader from '../layout/SectionHeader.astro';
+import Card from '../ui/Card.astro';
+import CheckItem from '../ui/CheckItem.astro';
+import Button from '../ui/Button.astro';
+
+// Raw SVG for eyebrow icon (credit-card)
+const eyebrowIconSvg = `
+<svg viewBox="0 0 14 14" fill="none" class="size-[14px]" xmlns="http://www.w3.org/2000/svg">
+  <path d="M11.6667 2.33333H2.33333C1.689 2.33333 1.16667 2.85567 1.16667 3.5V10.5C1.16667 11.1443 1.689 11.6667 2.33333 11.6667H11.6667C12.311 11.6667 12.8333 11.1443 12.8333 10.5V3.5C12.8333 2.85567 12.311 2.33333 11.6667 2.33333Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M1.16667 5.25H12.8333" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+`;
+---
+
+<Section variant="transparent" padding="lg" id="pricing">
+  <Container>
+    <!-- Section Header -->
+    <SectionHeader
+      eyebrow="GROWTH PLANS"
+      eyebrowIcon={eyebrowIconSvg}
+      title="Choose the right level of local growth support."
+      description="Every plan includes the key services your business needs to get found, earn trust, and turn interest into more calls, messages, and bookings."
+      align="center"
+    />
+
+    <div class="flex flex-col gap-[60px] mt-[60px] w-full">
+      <!-- Cards Container -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-[32px] w-full items-stretch">
+        
+        <!-- Card 1: Starter Setup -->
+        <Card variant="light" class="p-[40px] flex flex-col justify-between min-h-[580px] lg:min-h-[auto]">
+          <div class="flex flex-col gap-[32px]">
+            <!-- Badge Icon -->
+            <div class="bg-[#f0f2e8] flex items-center justify-center rounded-[8px] shrink-0 size-[42px] text-bg-dark">
+              <img src="/assets/icons/sprout.svg" alt="Sprout" class="size-[21px]" />
+            </div>
+
+            <!-- Title & Subtitle -->
+            <div class="flex flex-col gap-[12px] items-start w-full">
+              <h3 class="font-medium text-[26px] tracking-[-0.5px] leading-[1.2] text-[#020c0b]">
+                Starter Setup
+              </h3>
+              <p class="font-normal text-[15px] text-text-secondary leading-[1.5]">
+                The essentials to get your presence in shape and start getting found.
+              </p>
+            </div>
+
+            <hr class="border-t border-border-subtle w-full" />
+
+            <!-- Checklist -->
+            <div class="flex flex-col gap-[20px] items-start w-full">
+              <span class="text-[13px] font-normal text-text-primary leading-none">Includes:</span>
+              <div class="flex flex-col gap-[16px] w-full">
+                <CheckItem text="Google Business Profile optimization" variant="light" />
+                <CheckItem text="Website & on-page SEO fixes" variant="light" />
+                <CheckItem text="Basic review strategy" variant="light" />
+                <CheckItem text="Local business listings cleanup" variant="light" />
+              </div>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-[20px] items-start pt-[40px] w-full mt-[32px]">
+            <Button variant="secondary" href="#audit" class="w-full justify-between">
+              <span>Starts with a free audit</span>
+              <span class="text-[16px] font-semibold">&gt;</span>
+            </Button>
+            <p class="font-normal text-[13px] text-text-secondary text-center w-full leading-[1.5]">
+              Perfect for businesses getting started with local growth.
+            </p>
+          </div>
+        </Card>
+
+        <!-- Card 2: Managed Growth (Dark / Recommended) -->
+        <Card variant="dark" class="p-[40px] flex flex-col justify-between min-h-[580px] lg:min-h-[auto] relative overflow-clip border border-white/5">
+          <div class="flex flex-col gap-[32px]">
+            <div class="flex items-center justify-between w-full">
+              <!-- Badge Icon -->
+              <div class="bg-[#22423f] flex items-center justify-center rounded-[8px] shrink-0 size-[42px]">
+                <img src="/assets/icons/trending-up.svg" alt="Trending" class="size-[21px]" />
+              </div>
+              <!-- Recommended Badge -->
+              <div class="bg-[#eaecb0] flex gap-[4px] items-center px-[12px] py-[4px] rounded-[12px] shrink-0">
+                <img src="/assets/icons/star-small.svg" alt="Star" class="size-[10px]" />
+                <span class="text-[#01221f] text-[11px] font-semibold tracking-[0.5px] uppercase select-none leading-none">
+                  RECOMMENDED
+                </span>
+              </div>
+            </div>
+
+            <!-- Title & Subtitle -->
+            <div class="flex flex-col gap-[12px] items-start w-full">
+              <h3 class="font-medium text-[26px] tracking-[-0.5px] leading-[1.2] text-white">
+                Managed Growth
+              </h3>
+              <p class="font-normal text-[15px] text-white/70 leading-[1.5]">
+                Ongoing optimization and content that drives steady, measurable results.
+              </p>
+            </div>
+
+            <hr class="border-t border-white/10 w-full" />
+
+            <!-- Checklist -->
+            <div class="flex flex-col gap-[20px] items-start w-full">
+              <span class="text-[13px] font-normal text-white leading-none">Includes everything in Starter, plus:</span>
+              <div class="flex flex-col gap-[16px] w-full">
+                <CheckItem text="Monthly content & post creation" variant="dark" />
+                <CheckItem text="Review generation & management" variant="dark" />
+                <CheckItem text="Local SEO & category optimization" variant="dark" />
+                <CheckItem text="Monthly performance reporting" variant="dark" />
+                <CheckItem text="Priority email & chat support" variant="dark" />
+              </div>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-[20px] items-start pt-[40px] w-full mt-[32px]">
+            <Button variant="accent-primary" href="#audit" class="w-full justify-between">
+              <span>Custom quote</span>
+              <span class="text-[16px] font-semibold">&gt;</span>
+            </Button>
+            <p class="font-normal text-[13px] text-white/70 text-center w-full leading-[1.5]">
+              Our most popular plan for businesses ready to grow consistently.
+            </p>
+          </div>
+        </Card>
+
+        <!-- Card 3: Growth Partner -->
+        <Card variant="light" class="p-[40px] flex flex-col justify-between min-h-[580px] lg:min-h-[auto]">
+          <div class="flex flex-col gap-[32px]">
+            <!-- Badge Icon -->
+            <div class="bg-[#f0f2e8] flex items-center justify-center rounded-[8px] shrink-0 size-[42px] text-bg-dark">
+              <img src="/assets/icons/crown-gold.svg" alt="Crown" class="size-[21px]" />
+            </div>
+
+            <!-- Title & Subtitle -->
+            <div class="flex flex-col gap-[12px] items-start w-full">
+              <h3 class="font-medium text-[26px] tracking-[-0.5px] leading-[1.2] text-[#020c0b]">
+                Growth Partner
+              </h3>
+              <p class="font-normal text-[15px] text-text-secondary leading-[1.5]">
+                Strategic partnership with hands-on support to accelerate your growth.
+              </p>
+            </div>
+
+            <hr class="border-t border-border-subtle w-full" />
+
+            <!-- Checklist -->
+            <div class="flex flex-col gap-[20px] items-start w-full">
+              <span class="text-[13px] font-normal text-text-primary leading-none">Includes:</span>
+              <div class="flex flex-col gap-[16px] w-full">
+                <CheckItem text="Custom local growth strategy" variant="light" />
+                <CheckItem text="Dedicated success manager" variant="light" />
+                <CheckItem text="Advanced tracking & insights" variant="light" />
+                <CheckItem text="Quarterly strategy reviews" variant="light" />
+                <CheckItem text="Priority implementation support" variant="light" />
+              </div>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-[20px] items-start pt-[40px] w-full mt-[32px]">
+            <Button variant="secondary" href="#audit" class="w-full justify-between">
+              <span>Custom quote</span>
+              <span class="text-[16px] font-semibold">&gt;</span>
+            </Button>
+            <p class="font-normal text-[13px] text-text-secondary text-center w-full leading-[1.5]">
+              Built for businesses ready to lead their market.
+            </p>
+          </div>
+        </Card>
+
+      </div>
+
+      <!-- Bottom Lavender Bar -->
+      <div class="bg-[#e8e1fc] border border-border-subtle flex flex-col md:flex-row gap-[24px] items-center p-[24px] rounded-[20px] w-full justify-between shadow-card">
+        <div class="flex gap-[20px] items-center w-full md:w-auto">
+          <!-- Icon container -->
+          <div class="bg-[#f7f1e6] flex items-center justify-center rounded-[24px] shrink-0 size-[56px] text-bg-dark">
+            <img src="/assets/icons/shield-purple.svg" alt="Shield" class="size-[24px]" />
+          </div>
+          <!-- Text content -->
+          <div class="flex flex-col gap-[4px] items-start flex-grow md:max-w-[650px]">
+            <h4 class="font-semibold text-[15px] tracking-[-0.3px] text-[#020c0b] leading-tight">
+              Not sure where to start?
+            </h4>
+            <p class="font-normal text-[14px] text-[#4b5563] leading-relaxed">
+              Begin with a free local audit. We'll review your presence and recommend the best path forward.
+            </p>
+          </div>
+        </div>
+
+        <Button variant="white" href="#audit" class="w-full md:w-auto">
+          Get your free audit <span class="ml-1 text-[16px]">&gt;</span>
+        </Button>
+      </div>
+
+    </div>
+  </Container>
+</Section>

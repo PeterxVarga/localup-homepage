@@ -1,0 +1,47 @@
+---
+import EyebrowPill from '../ui/EyebrowPill.astro';
+
+interface Props {
+  eyebrow?: string;
+  eyebrowIcon?: string;
+  title: string;
+  description?: string;
+  align?: 'left' | 'center';
+  theme?: 'light' | 'dark';
+  class?: string;
+}
+
+const {
+  eyebrow,
+  eyebrowIcon,
+  title,
+  description,
+  align = 'center',
+  theme = 'light',
+  class: className = '',
+} = Astro.props;
+
+const alignClasses = {
+  left: 'text-left items-start',
+  center: 'text-center items-center',
+};
+
+const textTitleColor = theme === 'dark' ? 'text-white' : 'text-text-primary';
+const textDescColor = theme === 'dark' ? 'text-white/70' : 'text-text-secondary';
+---
+
+<div class={`flex flex-col gap-[24px] max-w-[850px] mx-auto w-full ${alignClasses[align]} ${className}`}>
+  {eyebrow && (
+    <EyebrowPill text={eyebrow}>
+      {eyebrowIcon && <Fragment set:html={eyebrowIcon} />}
+    </EyebrowPill>
+  )}
+  <h2 class={`font-medium leading-[1.1] text-[40px] sm:text-[48px] md:text-[60px] tracking-[-2px] sm:tracking-[-3px] ${textTitleColor}`}>
+    {title}
+  </h2>
+  {description && (
+    <p class={`font-normal leading-[1.6] text-[18px] sm:text-[20px] tracking-[-0.5px] max-w-[680px] ${textDescColor}`}>
+      {description}
+    </p>
+  )}
+</div>

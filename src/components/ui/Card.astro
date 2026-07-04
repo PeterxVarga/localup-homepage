@@ -1,0 +1,21 @@
+---
+interface Props {
+  variant?: 'light' | 'warm' | 'dark' | 'accent-green' | 'accent-lavender' | 'dominant';
+  class?: string;
+}
+
+const { variant = 'light', class: className = '' } = Astro.props;
+
+const variantClasses = {
+  light: 'bg-white border border-border-subtle shadow-card text-text-primary rounded-[16px] md:rounded-[20px]',
+  warm: 'bg-bg-card-warm text-bg-dark rounded-[16px] md:rounded-[20px]',
+  dark: 'bg-bg-dark text-white border border-border-dark-subtle rounded-[16px] md:rounded-[20px]',
+  'accent-green': 'bg-accent-surface text-bg-dark rounded-[16px] md:rounded-[20px]',
+  'accent-lavender': 'bg-accent-lavender border border-border-subtle text-text-primary rounded-[20px] md:rounded-[24px]',
+  dominant: 'bg-bg-dark text-white shadow-hero rounded-[24px] md:rounded-[32px] p-[32px] sm:p-[60px] lg:p-[80px]',
+};
+---
+
+<div class={`relative overflow-clip ${variantClasses[variant]} ${className}`}>
+  <slot />
+</div>

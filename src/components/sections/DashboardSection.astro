@@ -1,0 +1,82 @@
+---
+import Container from '../layout/Container.astro';
+import Section from '../layout/Section.astro';
+import SectionHeader from '../layout/SectionHeader.astro';
+import { dashboardContent } from '../../data/homepage';
+
+const { eyebrow, title, description, screenshot, bgDecor, features } = dashboardContent;
+
+const eyebrowIconSvg = `
+<svg viewBox="0 0 13 13" fill="none" class="size-[14px]" xmlns="http://www.w3.org/2000/svg">
+  <path d="M1.0824 6.11782C1.03864 6.23569 1.03864 6.36535 1.0824 6.48322C1.50854 7.51649 2.23189 8.39997 3.16075 9.02165C4.08961 9.64332 5.18214 9.97519 6.29985 9.97519C7.41755 9.97519 8.51008 9.64332 9.43894 9.02165C10.3678 8.39997 11.0912 7.51649 11.5173 6.48322C11.561 6.36535 11.561 6.36535 11.5173 6.11782C11.0912 5.08454 10.3678 4.20106 9.43894 3.57939C8.51008 2.95771 7.41755 2.62584 6.29985 2.62584C5.18214 2.62584 4.08961 2.95771 3.16075 3.57939C2.23189 4.20106 1.50854 5.08454 1.0824 6.11782Z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+</svg>
+`;
+---
+
+<Section variant="transparent" padding="lg" id="dashboard" class="overflow-x-clip">
+  <Container class="flex flex-col items-center">
+    
+    <!-- Section Header -->
+    <SectionHeader
+      eyebrow={eyebrow}
+      eyebrowIcon={eyebrowIconSvg}
+      title={title}
+      description={description}
+      align="center"
+    />
+
+    <!-- Media Container / Dashboard Mockup Stack -->
+    <!-- Wrapped inside Container, guaranteeing 100% pixel-perfect width alignment -->
+    <div class="relative w-full aspect-[2/1] md:aspect-auto md:h-[420px] lg:h-[540px] mt-[60px] md:mt-[80px] lg:mt-[90px]">
+      
+      <!-- Decorative Dark Background Box -->
+      <div class="absolute bg-bg-dark inset-y-[20px] md:inset-y-[35px] lg:inset-y-[50px] left-0 right-0 rounded-[24px] md:rounded-[32px] overflow-hidden z-0 shadow-hero">
+        <!-- Concentric Circles overlay -->
+        <div class="absolute left-[-150px] md:left-[-200px] top-[-100px] size-[400px] md:size-[600px] lg:size-[800px] pointer-events-none select-none z-0 opacity-40">
+          <img src={bgDecor} alt="" width="800" height="800" class="size-full" />
+        </div>
+      </div>
+
+      <!-- Dashboard Mockup Image Wrapper (Shrunk and shifted slightly upward) -->
+      <div class="absolute top-[44%] left-1/2 -translate-x-1/2 -translate-y-1/2 w-[90%] lg:w-[960px] bg-white border border-border-subtle rounded-[12px] md:rounded-[20px] shadow-panel overflow-hidden z-10 transition-transform hover:scale-[1.01] duration-500">
+        <img 
+          src={screenshot} 
+          alt="LocalUp Transparent Client Dashboard Preview" 
+          width="960" 
+          height="540" 
+          class="w-full h-auto object-cover pointer-events-none" 
+          loading="lazy"
+        />
+      </div>
+
+    </div>
+
+    <!-- Features Row -->
+    <div class="flex flex-col md:flex-row gap-[32px] md:gap-[40px] w-full justify-between items-stretch mt-[60px]">
+      {features.map((feature, index) => (
+        <>
+          {index > 0 && (
+            <div class="hidden md:block w-px bg-border-subtle/50 h-[64px] self-center shrink-0" />
+          )}
+          <div class="flex flex-1 gap-[16px] items-start min-w-0">
+            <!-- Icon Circle -->
+            <div class="bg-accent-strong/20 md:bg-accent-soft flex items-center justify-center rounded-[12px] md:rounded-[20px] shrink-0 size-[40px] text-bg-dark">
+              <img src={feature.icon} alt="" width="18" height="18" class="size-[18px]" aria-hidden="true" />
+            </div>
+            
+            <!-- Text Content -->
+            <div class="flex flex-col gap-[4px] items-start min-w-0">
+              <h3 class="font-semibold leading-none text-[18px] text-text-primary">
+                {feature.title}
+              </h3>
+              <p class="font-normal leading-[1.5] text-[14px] text-text-secondary">
+                {feature.description}
+              </p>
+            </div>
+          </div>
+        </>
+      ))}
+    </div>
+
+  </Container>
+</Section>

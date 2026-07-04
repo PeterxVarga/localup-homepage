@@ -160,25 +160,30 @@ Example:
 
 ```css
 :root {
-  --color-bg-page: ;
-  --color-bg-surface: ;
-  --color-bg-card: ;
-  --color-bg-card-warm: ;
-  --color-bg-muted: ;
-  --color-bg-dark: ;
+  --color-bg-page: #fffffe;
+  --color-bg-surface: #fffffe;
+  --color-bg-card: #fffffe;
+  --color-bg-card-warm: #f7f1e6;
+  --color-bg-muted: #f0f2e8;
+  --color-bg-dark: #01221f;
 
-  --color-text-primary: ;
-  --color-text-secondary: ;
-  --color-text-muted: ;
-  --color-text-inverse: ;
+  --color-text-primary: #020c0b;
+  --color-text-secondary: rgba(2, 12, 11, 0.7);
+  --color-text-muted: rgba(2, 12, 11, 0.4);
+  --color-text-inverse: #ffffff;
 
-  --color-accent-soft: ;
-  --color-accent-strong: ;
-  --color-accent-surface: ;
+  --color-accent-soft: #eaecb0;
+  --color-accent-strong: #e2e67f;
+  --color-accent-surface: #dceccb;
+  --color-accent-lavender: #ede7fd;
 
-  --color-border-subtle: ;
-  --color-border-strong: ;
+  --color-border-subtle: #e5e7eb;
+  --color-border-strong: #01221f;
+  --color-border-dark-subtle: rgba(255, 255, 255, 0.13);
 
+  --color-bg-icon-dark: #22423f;
+
+  --radius-xs: 4px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;
@@ -187,10 +192,20 @@ Example:
   --radius-3xl: 32px;
   --radius-pill: 999px;
 
-  --shadow-small: ;
-  --shadow-card: ;
-  --shadow-panel: ;
-  --shadow-hero: ;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 40px;
+  --space-3xl: 60px;
+  --space-4xl: 80px;
+  --space-5xl: 100px;
+
+  --shadow-small: 0px 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-card: 0px 4px 8px rgba(0, 0, 0, 0.05);
+  --shadow-panel: 0px 12px 20px rgba(1, 35, 31, 0.03);
+  --shadow-hero: 0px 12px 40px rgba(0, 0, 0, 0.03);
 }
 ```
 

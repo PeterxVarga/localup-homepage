@@ -1,0 +1,94 @@
+---
+import Section from '../layout/Section.astro';
+import EyebrowPill from '../ui/EyebrowPill.astro';
+import Button from '../ui/Button.astro';
+import HeroVisual from '../visuals/HeroVisual.astro';
+import { heroContent } from '../../data/homepage';
+
+const { description } = heroContent;
+---
+
+<Section variant="transparent" padding="none">
+  <!--
+    Hero layout: left content is inset inside the page container,
+    right visual bleeds to the viewport right edge (no right rounding).
+    We achieve this by using a flex row where:
+      - left col gets standard left padding (mirrors the Container)
+      - right col has no right padding and extends to the page edge
+  -->
+  <div class="flex flex-col lg:flex-row items-stretch w-full pb-[80px] pt-[35px] md:pt-[50px]">
+
+    <!-- Left Content Column (padded like Container, max width half) -->
+    <div class="
+      flex flex-col items-start justify-center
+      px-[24px] sm:px-[32px] md:px-[40px]
+      w-full lg:w-1/2 lg:max-w-[calc(1280px/2+40px)]
+      lg:ml-auto
+    ">
+      <EyebrowPill text="Local growth partner for service businesses" class="mb-[32px]">
+        <img src="/assets/icons/chart-line.svg" alt="" width="17" height="17" class="size-[17px]" />
+      </EyebrowPill>
+
+      <h1 class="font-medium text-[36px] sm:text-[48px] md:text-[52px] lg:text-[58px] leading-[1.1] text-text-primary tracking-[-2px] md:tracking-[-3px] lg:tracking-[-3.5px] mb-[16px]">
+        Get found locally.<br/>Get chosen more often.
+      </h1>
+
+      <p class="font-normal text-[18px] sm:text-[20px] leading-[1.6] text-text-secondary tracking-[-0.5px] mb-[40px] max-w-[760px]">
+        {description.split('\n').map((line, i) => (
+          <>
+            {line}
+            {i < description.split('\n').length - 1 && <br class="hidden sm:inline" />}
+          </>
+        ))}
+      </p>
+
+      <div class="flex flex-col sm:flex-row gap-[16px] w-full sm:w-auto mb-[40px]">
+        <Button variant="primary" href="#audit" class="w-full sm:w-auto">
+          Get your free local audit
+        </Button>
+        <Button variant="secondary" href="#how-it-works" class="w-full sm:w-auto">
+          See how it works
+        </Button>
+      </div>
+
+      <!-- Social Rating -->
+      <div class="flex gap-[16px] items-center">
+        <div class="flex items-center">
+          <div class="size-[36px] rounded-full border-[1.5px] border-bg-card-warm overflow-hidden z-30">
+            <img src="/assets/images/avatar-1.png" alt="Local business customer" width="36" height="36" class="w-full h-full object-cover" />
+          </div>
+          <div class="size-[36px] rounded-full border-[1.5px] border-bg-card-warm overflow-hidden -ml-[9px] z-20">
+            <img src="/assets/images/avatar-2.png" alt="Local business customer" width="36" height="36" class="w-full h-full object-cover" />
+          </div>
+          <div class="size-[36px] rounded-full border-[1.5px] border-bg-card-warm overflow-hidden -ml-[9px] z-10">
+            <img src="/assets/images/avatar-3.png" alt="Local business customer" width="36" height="36" class="w-full h-full object-cover" />
+          </div>
+          <div class="size-[36px] rounded-full border-[1.5px] border-bg-card-warm overflow-hidden -ml-[9px] z-0">
+            <img src="/assets/images/avatar-4.png" alt="Local business customer" width="36" height="36" class="w-full h-full object-cover" />
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-[4px] items-start">
+          <div class="flex items-start text-[#f5a623] text-[22px] leading-none select-none tracking-tighter">
+            <span>★</span><span>★</span><span>★</span><span>★</span><span>★</span>
+          </div>
+          <p class="text-[14px] font-normal leading-none text-[#01221f]">
+            4.8 average rating
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Visual Column — bleeds to the viewport right edge -->
+    <div class="
+      w-full lg:w-1/2
+      mt-[40px] lg:mt-0
+      pl-[24px] sm:pl-[32px] lg:pl-[40px]
+      pr-0
+      flex items-center
+    ">
+      <HeroVisual />
+    </div>
+
+  </div>
+</Section>

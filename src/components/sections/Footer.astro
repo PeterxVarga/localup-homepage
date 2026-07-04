@@ -1,0 +1,96 @@
+---
+import Container from '../layout/Container.astro';
+import { footerContent } from '../../data/homepage';
+
+const { description, socials, columns, bottom } = footerContent;
+---
+
+<footer class="w-full bg-bg-page border-t border-border-subtle pt-[100px] pb-[40px] mt-[80px]">
+  <Container class="flex flex-col gap-[80px] items-start">
+    
+    <!-- Top Grid Column -->
+    <div class="flex flex-col lg:flex-row justify-between items-start gap-[40px] w-full">
+      
+      <!-- Brand Column -->
+      <div class="flex flex-col gap-[24px] items-start w-full lg:w-[340px]">
+        <a href="/" class="text-[26px] font-medium tracking-[-0.5px] text-text-primary hover:opacity-90 transition-opacity leading-[26px] select-none">
+          LocalUp
+        </a>
+        <p class="font-normal text-[16px] text-text-secondary leading-[1.5] w-full">
+          {description}
+        </p>
+        
+        <!-- Social Icons Row -->
+        <div class="flex gap-[12px] items-start">
+          {socials.map((social) => (
+            <a 
+              href={social.href} 
+              aria-label={social.name}
+              class="bg-bg-dark flex items-center justify-center rounded-[8px] shrink-0 size-[36px] hover:opacity-90 transition-opacity"
+            >
+              <img src={social.icon} alt="" width="18" height="18" class="size-[18px]" aria-hidden="true" />
+            </a>
+          ))}
+        </div>
+      </div>
+
+      <!-- Navigation Columns -->
+      <div class="flex flex-wrap gap-x-[64px] gap-y-[32px] md:gap-x-[80px] items-start">
+        {columns.map((col) => (
+          <div class="flex flex-col gap-[20px] items-start min-w-[120px]">
+            <span class="font-semibold text-[13px] text-text-primary uppercase tracking-wider leading-none">
+              {col.label}
+            </span>
+            <div class="flex flex-col gap-[12px] items-start">
+              {col.links.map((link) => (
+                <a 
+                  href={link.href} 
+                  class="text-[15px] font-normal text-text-secondary hover:text-text-primary transition-colors leading-[1.5]"
+                >
+                  {link.label}
+                </a>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
+    </div>
+
+    <!-- Bottom Bar Column -->
+    <div class="flex flex-col gap-[32px] items-start w-full">
+      <!-- Divider Line -->
+      <hr class="border-t border-border-subtle w-full" />
+      
+      <!-- Bottom Row Info -->
+      <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-[20px] w-full">
+        <!-- Left Side: Copyright and Status Bullet -->
+        <div class="flex flex-col sm:flex-row gap-y-[12px] sm:gap-x-[32px] items-start sm:items-center">
+          <p class="font-normal text-[13px] text-text-muted leading-[1.5] whitespace-nowrap">
+            {bottom.copyright}
+          </p>
+          <div class="flex gap-[16px] items-center">
+            <!-- Green Status Dot -->
+            <div class="bg-bg-dark/30 rounded-full shrink-0 size-[6px]" aria-hidden="true" />
+            <p class="font-normal text-[13px] text-text-muted leading-[1.5] whitespace-nowrap">
+              {bottom.trustLabel}
+            </p>
+          </div>
+        </div>
+
+        <!-- Right Side Sitemap and Accessibility -->
+        <div class="flex gap-[24px] items-start">
+          {bottom.links.map((link) => (
+            <a 
+              href={link.href} 
+              class="font-normal text-[13px] text-text-muted hover:text-text-primary transition-colors underline decoration-solid decoration-from-font underline-offset-[3px] leading-[1.5]"
+            >
+              {link.label}
+            </a>
+          ))}
+        </div>
+      </div>
+    </div>
+
+  </Container>
+</footer>

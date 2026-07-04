@@ -1,0 +1,111 @@
+---
+import Container from '../layout/Container.astro';
+import Section from '../layout/Section.astro';
+import SectionHeader from '../layout/SectionHeader.astro';
+import Button from '../ui/Button.astro';
+import { faqContent } from '../../data/homepage';
+
+const { eyebrow, title, description, items, sidebar } = faqContent;
+
+// Raw SVG for eyebrow icon (help-circle)
+const eyebrowIconSvg = `
+<svg viewBox="0 0 14 14" fill="none" class="size-[14px]" xmlns="http://www.w3.org/2000/svg">
+  <path d="M7 12.8333C10.2217 12.8333 12.8333 10.2217 12.8333 7C12.8333 3.77833 10.2217 1.16667 7 1.16667C3.77833 1.16667 1.16667 3.77833 1.16667 7C1.16667 10.2217 3.77833 12.8333 7 12.8333Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M5.25 5.25C5.25 4.78587 5.43437 4.34075 5.76256 4.01256C6.09075 3.68437 6.53587 3.5 7 3.5C7.46413 3.5 7.90925 3.68437 8.23744 4.01256C8.56563 4.34075 8.75 4.78587 8.75 5.25C8.75 6.41667 7 7 7 7" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M7 9.33333H7.00583" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+`;
+---
+
+<Section variant="transparent" padding="lg" id="resources">
+  <Container>
+    <!-- Section Header -->
+    <SectionHeader
+      eyebrow={eyebrow}
+      eyebrowIcon={eyebrowIconSvg}
+      title={title}
+      description={description}
+      align="center"
+    />
+
+    <div class="flex flex-col lg:flex-row gap-[40px] items-start mt-[60px] w-full">
+      <!-- Left Sidebar Card -->
+      <div class="bg-white border border-border-subtle p-[32px] rounded-[20px] shadow-card flex flex-col gap-[32px] w-full lg:w-[340px] shrink-0">
+        <!-- Icon wrapping -->
+        <div class="bg-bg-card-warm flex items-center justify-center rounded-[12px] shrink-0 size-[48px]">
+          <img src="/assets/icons/help-circle-color.svg" alt="Help" class="size-[24px]" />
+        </div>
+        
+        <!-- Description -->
+        <div class="flex flex-col gap-[12px] items-start w-full">
+          <h3 class="font-semibold text-[20px] tracking-[-0.5px] leading-[1.6] text-text-primary">
+            {sidebar.heading}
+          </h3>
+          <p class="font-normal text-[14px] text-text-muted leading-[1.65]">
+            {sidebar.description}
+          </p>
+        </div>
+
+        <hr class="border-t border-border-subtle w-full" />
+
+        <!-- Checklist -->
+        <div class="flex flex-col gap-[12px] items-start w-full">
+          {sidebar.checkItems.map((item) => (
+            <div class="flex gap-[12px] items-center">
+              <div class="bg-bg-card-warm flex items-center justify-center rounded-[12px] shrink-0 size-[20px]">
+                <img src="/assets/icons/check-round.svg" alt="" width="11" height="11" class="size-[11px]" />
+              </div>
+              <span class="text-[14px] font-medium text-text-primary">{item}</span>
+            </div>
+          ))}
+        </div>
+
+        <!-- Button -->
+        <Button variant="primary" href={sidebar.cta.href} class="w-full justify-between">
+          <span>{sidebar.cta.label}</span>
+        </Button>
+      </div>
+
+      <!-- Right Accordion List Card -->
+      <div class="bg-white border border-border-subtle px-[24px] py-[12px] rounded-[20px] shadow-card flex-grow w-full">
+        {items.map((faq, index) => (
+          <details 
+            class="group border-b last:border-0 border-border-subtle py-[24px] w-full"
+            open={index === 0}
+          >
+            <summary class="flex justify-between items-center gap-[16px] cursor-pointer list-none select-none">
+              <div class="flex gap-[16px] items-center">
+                <!-- Number Badge -->
+                <div class="bg-bg-card-warm flex items-center justify-center rounded-[16px] shrink-0 size-[32px] text-text-primary text-[13px] font-semibold">
+                  {index + 1}
+                </div>
+                <h4 class="font-semibold text-[17px] tracking-[-0.3px] text-text-primary leading-[1.4]">
+                  {faq.question}
+                </h4>
+              </div>
+              <!-- Chevron down image -->
+              <div class="size-[20px] shrink-0 transition-transform duration-200 group-open:rotate-180 flex items-center justify-center">
+                <img src="/assets/icons/chevron-down.svg" alt="" width="20" height="20" class="size-full" />
+              </div>
+            </summary>
+            
+            <div class="pl-[48px] pt-[16px] text-text-muted text-[15px] leading-[1.5]">
+              <p>{faq.answer}</p>
+            </div>
+          </details>
+        ))}
+      </div>
+
+    </div>
+  </Container>
+</Section>
+
+<style>
+  /* Hide details marker */
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary {
+    display: flex;
+  }
+</style>

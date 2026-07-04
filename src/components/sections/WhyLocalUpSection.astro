@@ -1,0 +1,100 @@
+---
+import Section from '../layout/Section.astro';
+import Container from '../layout/Container.astro';
+import EyebrowPill from '../ui/EyebrowPill.astro';
+
+const standardRows = [
+  'Launch-focused',
+  'Design-first',
+  'Static service pages',
+  'Basic contact setup',
+  'Limited visibility after launch',
+  'No clear path forward',
+];
+
+const localupRows = [
+  'Growth-focused',
+  'Visibility + trust-led',
+  'Local service + area structure',
+  'Calls, leads & reviews visible',
+  'Clear dashboard & reporting',
+  'Actionable next steps',
+];
+---
+
+<Section variant="light" padding="lg" id="why-localup">
+  <Container class="flex flex-col items-center gap-[64px]">
+
+    <!-- Header -->
+    <div class="flex flex-col items-center gap-[24px] text-center max-w-[720px]">
+      <EyebrowPill text="Why LocalUp">
+        <!-- Chart line icon reused from hero -->
+        <img src="/assets/icons/chart-line.svg" alt="" width="14" height="14" class="size-[14px]" />
+      </EyebrowPill>
+
+      <h2 class="font-medium text-[40px] sm:text-[50px] md:text-[56px] leading-[1.1] text-text-primary tracking-[-2px] md:tracking-[-3px]">
+        A launch gets you live.<br/>LocalUp keeps you growing.
+      </h2>
+
+      <p class="font-normal text-[18px] sm:text-[20px] leading-[1.6] text-text-secondary tracking-[-0.5px] max-w-[600px]">
+        Go beyond a one-time site with a clearer local presence, stronger trust signals, and visible monthly progress.
+      </p>
+    </div>
+
+    <!-- Comparison Cards -->
+    <div class="flex flex-col md:flex-row items-stretch w-full max-w-[900px] rounded-[20px] overflow-hidden shadow-card border border-border-subtle">
+
+      <!-- Left: Standard website -->
+      <div class="bg-white flex flex-col flex-1 px-[32px] py-[32px] md:py-[32px]">
+        <!-- Card header -->
+        <div class="flex gap-[14px] items-center pb-[24px] border-b border-border-subtle mb-[8px]">
+          <div class="bg-[#f3f4f6] flex items-center justify-center rounded-[12px] shrink-0 size-[44px]">
+            <img src="/assets/icons/monitor.svg" alt="" width="22" height="22" class="size-[22px]" />
+          </div>
+          <p class="font-semibold text-[20px] text-text-primary tracking-[-0.5px]">Standard website</p>
+        </div>
+
+        <!-- Rows -->
+        <div class="flex flex-col">
+          {standardRows.map((row, i) => (
+            <div class={`flex gap-[14px] items-center py-[13px] ${i < standardRows.length - 1 ? 'border-b border-border-subtle' : ''}`}>
+              <!-- X circle (grey) -->
+              <img src="/assets/icons/x-circle.svg" alt="" width="22" height="22" class="size-[22px] shrink-0 opacity-50" />
+              <p class="font-normal text-[14px] text-[#6b7280] leading-normal">{row}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <!-- Right: LocalUp (elevated) -->
+      <div class="bg-[#fafbf5] flex flex-col flex-1 px-[32px] py-[40px] border-t md:border-t-0 md:border-l border-bg-dark/20 rounded-none md:rounded-r-[20px] shadow-[0px_12px_20px_rgba(0,0,0,0.04)]">
+        <!-- Card header -->
+        <div class="flex gap-[14px] items-center pb-[24px] border-b border-bg-dark/10 mb-[8px]">
+          <img src="/assets/icons/localup-icon-card.svg" alt="" width="44" height="44" class="size-[44px] shrink-0" />
+          <p class="font-semibold text-[20px] text-text-primary tracking-[-0.5px]">LocalUp</p>
+        </div>
+
+        <!-- Rows -->
+        <div class="flex flex-col gap-[2px]">
+          {localupRows.map((row, i) => (
+            <div class={`flex gap-[14px] items-center py-[13px] ${i < localupRows.length - 1 ? 'border-b border-bg-dark/10' : ''}`}>
+              <!-- Check circle (green) -->
+              <img src="/assets/icons/check-circle-green.svg" alt="" width="22" height="22" class="size-[22px] shrink-0" />
+              <p class="font-medium text-[14px] text-text-primary leading-normal">{row}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom highlight bar -->
+    <div class="flex gap-[20px] items-center justify-center bg-bg-muted border border-border-subtle px-[32px] py-[22px] rounded-[20px] w-full max-w-[760px]">
+      <img src="/assets/icons/localup-icon-bar.svg" alt="" width="44" height="44" class="size-[44px] shrink-0" />
+      <p class="font-medium text-[16px] sm:text-[18px] text-text-primary leading-[1.4]">
+        Made for local businesses that want ongoing growth, not just a site handoff.
+      </p>
+    </div>
+
+  </Container>
+</Section>

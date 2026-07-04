@@ -1,0 +1,147 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg-page: #fffffe;
+  --color-bg-card-warm: #f7f1e6;
+  --color-bg-muted: #f0f2e8;
+  --color-bg-dark: #01221f;
+
+  --color-text-primary: #020c0b;
+  --color-text-secondary: rgba(2, 12, 11, 0.7);
+  --color-text-muted: rgba(2, 12, 11, 0.4);
+  --color-text-inverse: #ffffff;
+
+  --color-accent-soft: #eaecb0;
+  --color-accent-strong: #e2e67f;
+  --color-accent-surface: #dceccb;
+  --color-accent-lavender: #ede7fd;
+
+  --color-border-subtle: #e5e7eb;
+  --color-border-strong: #01221f;
+  --color-border-dark-subtle: rgba(255, 255, 255, 0.13);
+
+  --color-bg-icon-dark: #22423f;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-3xl: 32px;
+  --radius-pill: 999px;
+
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 40px;
+  --space-3xl: 60px;
+  --space-4xl: 80px;
+  --space-5xl: 100px;
+
+  --shadow-small: 0px 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-card: 0px 4px 8px rgba(0, 0, 0, 0.05);
+  --shadow-panel: 0px 12px 20px rgba(1, 35, 31, 0.03);
+  --shadow-hero: 0px 12px 40px rgba(0, 0, 0, 0.03);
+}
+
+:root {
+  --color-bg-page: #fffffe;
+  --color-bg-surface: #fffffe;
+  --color-bg-card: #fffffe;
+  --color-bg-card-warm: #f7f1e6;
+  --color-bg-muted: #f0f2e8;
+  --color-bg-dark: #01221f;
+
+  --color-text-primary: #020c0b;
+  --color-text-secondary: rgba(2, 12, 11, 0.7);
+  --color-text-muted: rgba(2, 12, 11, 0.4);
+  --color-text-inverse: #ffffff;
+
+  --color-accent-soft: #eaecb0;
+  --color-accent-strong: #e2e67f;
+  --color-accent-surface: #dceccb;
+  --color-accent-lavender: #ede7fd;
+
+  --color-border-subtle: #e5e7eb;
+  --color-border-strong: #01221f;
+  --color-border-dark-subtle: rgba(255, 255, 255, 0.13);
+
+  --color-bg-icon-dark: #22423f;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+  --radius-2xl: 24px;
+  --radius-3xl: 32px;
+  --radius-pill: 999px;
+
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 40px;
+  --space-3xl: 60px;
+  --space-4xl: 80px;
+  --space-5xl: 100px;
+
+  --shadow-small: 0px 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-card: 0px 4px 8px rgba(0, 0, 0, 0.05);
+  --shadow-panel: 0px 12px 20px rgba(1, 35, 31, 0.03);
+  --shadow-hero: 0px 12px 40px rgba(0, 0, 0, 0.03);
+}
+
+body {
+  background-color: var(--color-bg-page);
+  color: var(--color-text-primary);
+  font-family: 'Geist', sans-serif;
+  margin: 0;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Prevent anchor scroll overshooting behind sticky nav */
+:target {
+  scroll-margin-top: 80px;
+}
+
+/* Infinite Marquee Slide Animations */
+@keyframes marquee-left {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes marquee-right {
+  0% {
+    transform: translateX(-50%);
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+.animate-marquee-left {
+  display: flex;
+  width: max-content;
+  animation: marquee-left 40s linear infinite;
+}
+
+.animate-marquee-right {
+  display: flex;
+  width: max-content;
+  animation: marquee-right 40s linear infinite;
+}
+
+
+

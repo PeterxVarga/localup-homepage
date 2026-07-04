@@ -1,0 +1,161 @@
+---
+import Container from '../layout/Container.astro';
+import Section from '../layout/Section.astro';
+import SectionHeader from '../layout/SectionHeader.astro';
+import Card from '../ui/Card.astro';
+
+// Raw SVG for eyebrow icon (rocket)
+const eyebrowIconSvg = `
+<svg viewBox="0 0 14 14" fill="none" class="size-[14px]" xmlns="http://www.w3.org/2000/svg">
+  <path d="M12.8333 1.16667C12.8333 1.16667 9.91667 1.75 8.16667 3.5C6.41667 5.25 6.41667 7.58333 6.41667 7.58333C6.41667 7.58333 8.75 7.58333 10.5 5.83333C12.25 4.08333 12.8333 1.16667 12.8333 1.16667Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M7.58333 6.41667C7.58333 6.41667 5.25 6.41667 3.5 8.16667C1.75 9.91667 1.16667 12.8333 1.16667 12.8333C1.16667 12.8333 4.08333 12.25 5.83333 10.5C7.58333 8.75 7.58333 6.41667 7.58333 6.41667Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M11.6667 5.25L8.75 2.33333" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M5.25 11.6667L2.33333 8.75" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+`;
+---
+
+<Section variant="transparent" padding="lg" class="overflow-x-clip">
+  <Container>
+    <!-- Section Header -->
+    <SectionHeader
+      eyebrow="Getting Started"
+      eyebrowIcon={eyebrowIconSvg}
+      title="Simple setup. Clear progress. Ongoing improvement."
+      description="A simple, proven process to uncover opportunities, set up LocalUp, and drive real local growth—month after month."
+      align="center"
+    />
+
+    <!-- Steps Timeline -->
+    <div class="flex flex-col lg:flex-row items-center gap-[16px] mt-[60px] w-full">
+      
+      <!-- Step 01 -->
+      <Card variant="light" class="flex flex-col justify-between p-[40px] h-[340px] w-full lg:flex-1 relative overflow-clip group">
+        <!-- Ellipse Background Shapes -->
+        <img src="/assets/icons/bg-ellipse-1.svg" alt="" class="absolute bottom-[-61px] right-[-61px] size-[200px] pointer-events-none select-none opacity-40 group-hover:scale-105 transition-transform duration-500" />
+        <img src="/assets/icons/bg-ellipse-2.svg" alt="" class="absolute bottom-[-111px] right-[-111px] size-[320px] pointer-events-none select-none opacity-40 group-hover:scale-105 transition-transform duration-500" />
+
+        <div class="relative z-10 flex flex-col items-start gap-[24px] h-full justify-between">
+          <div class="bg-[rgba(234,236,176,0.7)] px-[12px] py-[8px] rounded-[8px] text-[13px] font-semibold text-[#01221f] leading-none select-none">
+            01
+          </div>
+          <div class="flex flex-col gap-[12px] items-start w-full">
+            <h3 class="font-medium text-[26px] tracking-[-0.5px] leading-[1.2] text-text-primary">
+              Free audit call
+            </h3>
+            <p class="font-normal text-[15px] text-text-secondary leading-[1.5] max-w-[280px]">
+              We'll review your local presence, identify opportunities, and share priorities tailored to your business.
+            </p>
+          </div>
+          <div class="bg-border-subtle flex gap-[8px] items-center px-[16px] py-[8px] rounded-[20px] shrink-0 text-[#01221f]">
+            <img src="/assets/icons/clock-small.svg" alt="" class="size-[14px]" />
+            <span class="text-[13px] font-medium leading-none">20 min</span>
+          </div>
+        </div>
+      </Card>
+
+      <!-- Arrow Divider 1 -->
+      <div class="bg-white border border-border-subtle shadow-card flex items-center justify-center rounded-[20px] shrink-0 size-[44px] rotate-90 lg:rotate-0">
+        <span class="text-text-primary text-[16px] font-medium">→</span>
+      </div>
+
+      <!-- Step 02 -->
+      <Card variant="light" class="flex flex-col justify-between p-[40px] h-[340px] w-full lg:flex-1 relative overflow-clip group">
+        <!-- Ellipse Background Shapes -->
+        <img src="/assets/icons/bg-ellipse-1.svg" alt="" class="absolute bottom-[-61px] right-[-61px] size-[200px] pointer-events-none select-none opacity-40 group-hover:scale-105 transition-transform duration-500" />
+        <img src="/assets/icons/bg-ellipse-2.svg" alt="" class="absolute bottom-[-111px] right-[-111px] size-[320px] pointer-events-none select-none opacity-40 group-hover:scale-105 transition-transform duration-500" />
+
+        <div class="relative z-10 flex flex-col items-start gap-[24px] h-full justify-between w-full">
+          <div class="bg-[rgba(234,236,176,0.7)] px-[12px] py-[8px] rounded-[8px] text-[13px] font-semibold text-[#01221f] leading-none select-none">
+            02
+          </div>
+          <div class="flex flex-col gap-[12px] items-start w-full">
+            <h3 class="font-medium text-[26px] tracking-[-0.5px] leading-[1.2] text-text-primary">
+              LocalUp setup
+            </h3>
+            <p class="font-normal text-[15px] text-text-secondary leading-[1.5] max-w-[280px]">
+              Our team sets everything up, connects your data, and configures your dashboard for success.
+            </p>
+          </div>
+          <div class="bg-border-subtle flex gap-[8px] items-center px-[16px] py-[8px] rounded-[20px] w-full text-[#01221f]">
+            <img src="/assets/icons/calendar.svg" alt="" class="size-[14px]" />
+            <span class="text-[13px] font-medium leading-none truncate">2–3 business days after access</span>
+          </div>
+        </div>
+      </Card>
+
+      <!-- Arrow Divider 2 -->
+      <div class="bg-white border border-border-subtle shadow-card flex items-center justify-center rounded-[20px] shrink-0 size-[44px] rotate-90 lg:rotate-0">
+        <span class="text-text-primary text-[16px] font-medium">→</span>
+      </div>
+
+      <!-- Step 03 -->
+      <Card variant="light" class="flex flex-col justify-between p-[40px] h-[340px] w-full lg:flex-1 relative overflow-clip group">
+        <!-- Ellipse Background Shapes -->
+        <img src="/assets/icons/bg-ellipse-1.svg" alt="" class="absolute bottom-[-61px] right-[-61px] size-[200px] pointer-events-none select-none opacity-40 group-hover:scale-105 transition-transform duration-500" />
+        <img src="/assets/icons/bg-ellipse-2.svg" alt="" class="absolute bottom-[-111px] right-[-111px] size-[320px] pointer-events-none select-none opacity-40 group-hover:scale-105 transition-transform duration-500" />
+
+        <div class="relative z-10 flex flex-col items-start gap-[24px] h-full justify-between">
+          <div class="bg-[rgba(234,236,176,0.7)] px-[12px] py-[8px] rounded-[8px] text-[13px] font-semibold text-[#01221f] leading-none select-none">
+            03
+          </div>
+          <div class="flex flex-col gap-[12px] items-start w-full">
+            <h3 class="font-medium text-[26px] tracking-[-0.5px] leading-[1.2] text-text-primary">
+              Monthly progress brief
+            </h3>
+            <p class="font-normal text-[15px] text-text-secondary leading-[1.5] max-w-[280px]">
+              We monitor, optimize, and deliver clear insights—so your business keeps growing locally.
+            </p>
+          </div>
+          <div class="bg-border-subtle flex gap-[8px] items-center px-[16px] py-[8px] rounded-[20px] shrink-0 text-[#01221f]">
+            <img src="/assets/icons/clock-small.svg" alt="" class="size-[14px]" />
+            <span class="text-[13px] font-medium leading-none">Ongoing</span>
+          </div>
+        </div>
+      </Card>
+
+    </div>
+
+    <!-- Bottom Features Card -->
+    <div class="bg-bg-card-warm border border-border-subtle flex flex-col lg:flex-row gap-[24px] items-start lg:items-center p-[24px] rounded-[24px] w-full justify-between shadow-card mt-[40px]">
+      <div class="flex gap-[20px] items-center">
+        <!-- Icon container -->
+        <div class="bg-[#ede8dc] flex items-center justify-center rounded-[24px] shrink-0 size-[56px] text-bg-dark">
+          <img src="/assets/icons/bar-chart.svg" alt="Bar chart" class="size-[24px]" />
+        </div>
+        <!-- Text content -->
+        <div class="flex flex-col gap-[4px] items-start">
+          <h4 class="font-semibold text-[17px] tracking-[-0.3px] text-text-primary leading-tight">
+            Built for results. Backed by local experts.
+          </h4>
+          <p class="font-normal text-[14px] text-text-secondary leading-relaxed">
+            Transparent process. Clear communication. Measurable impact.
+          </p>
+        </div>
+      </div>
+
+      <!-- Features checkboxes (Horizontal rows) -->
+      <div class="flex flex-col sm:flex-row gap-[24px] lg:gap-[32px] w-full lg:w-auto items-start sm:items-center">
+        <div class="flex gap-[12px] items-center shrink-0">
+          <div class="bg-white/10 border border-[#e2e67f] flex items-center justify-center rounded-[8px] shrink-0 size-[18px]">
+            <img src="/assets/icons/check-green.svg" alt="Check" class="size-[10px]" />
+          </div>
+          <span class="text-[14px] font-medium text-text-secondary whitespace-nowrap">Local expertise</span>
+        </div>
+        <div class="flex gap-[12px] items-center shrink-0">
+          <div class="bg-white/10 border border-[#e2e67f] flex items-center justify-center rounded-[8px] shrink-0 size-[18px]">
+            <img src="/assets/icons/check-green.svg" alt="Check" class="size-[10px]" />
+          </div>
+          <span class="text-[14px] font-medium text-text-secondary whitespace-nowrap">Data-driven insights</span>
+        </div>
+        <div class="flex gap-[12px] items-center shrink-0">
+          <div class="bg-white/10 border border-[#e2e67f] flex items-center justify-center rounded-[8px] shrink-0 size-[18px]">
+            <img src="/assets/icons/check-green.svg" alt="Check" class="size-[10px]" />
+          </div>
+          <span class="text-[14px] font-medium text-text-secondary whitespace-nowrap">Continuous optimization</span>
+        </div>
+      </div>
+    </div>
+
+  </Container>
+</Section>

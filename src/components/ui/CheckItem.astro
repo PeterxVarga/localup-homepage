@@ -1,0 +1,28 @@
+---
+interface Props {
+  text: string;
+  variant?: 'light' | 'dark';
+  class?: string;
+}
+
+const { text, variant = 'light', class: className = '' } = Astro.props;
+
+const boxClass = variant === 'dark'
+  ? 'bg-white/10 border border-accent-soft text-accent-strong'
+  : 'bg-bg-dark/5 border border-bg-dark text-bg-dark';
+
+const textClass = variant === 'dark'
+  ? 'text-white/70'
+  : 'text-text-secondary';
+---
+
+<div class={`flex gap-[12px] items-center w-full ${className}`}>
+  <div class={`flex items-center justify-center rounded-[8px] shrink-0 size-[18px] ${boxClass}`}>
+    <svg class="size-[10px]" fill="none" viewBox="0 0 10 10" stroke="currentColor" stroke-width="2">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M1 5l3 3 5-6" />
+    </svg>
+  </div>
+  <p class={`font-normal leading-[1.5] text-[15px] tracking-tight ${textClass}`}>
+    {text}
+  </p>
+</div>

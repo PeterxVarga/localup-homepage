@@ -1,0 +1,153 @@
+---
+import Container from '../layout/Container.astro';
+import Section from '../layout/Section.astro';
+import SectionHeader from '../layout/SectionHeader.astro';
+import Card from '../ui/Card.astro';
+import CheckItem from '../ui/CheckItem.astro';
+import Button from '../ui/Button.astro';
+import ServiceItem from '../ui/ServiceItem.astro';
+
+// Raw SVG for eyebrow icon (chart-line)
+const eyebrowIconSvg = `
+<svg viewBox="0 0 17 17" fill="none" class="size-[14px]" xmlns="http://www.w3.org/2000/svg">
+  <path d="M2.125 2.125V13.4583C2.125 13.8341 2.27426 14.1944 2.53993 14.4601C2.80561 14.7257 3.16594 14.875 3.54167 14.875H14.875" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M12.75 12.0417V6.375" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M9.20833 12.0417V3.54167" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M5.66667 12.0417V9.91667" stroke="currentColor" stroke-opacity="0.9" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+`;
+
+const services = [
+  {
+    title: 'Google Business Profile improvements',
+    description: 'Photos, posts, details',
+    icon: '/assets/icons/map-pin.svg',
+  },
+  {
+    title: 'Local SEO foundations',
+    description: 'Keywords, categories, service areas',
+    icon: '/assets/icons/search.svg',
+  },
+  {
+    title: 'Service page improvements',
+    description: 'Content, structure, trust signals',
+    icon: '/assets/icons/file-text.svg',
+  },
+  {
+    title: 'Website conversion fixes',
+    description: 'CTAs, forms, bookings',
+    icon: '/assets/icons/layout.svg',
+  },
+  {
+    title: 'Review request system',
+    description: 'Automated requests, follow-ups',
+    icon: '/assets/icons/star-small.svg',
+  },
+  {
+    title: 'Listings & business info cleanup',
+    description: 'NAP, categories, consistency',
+    icon: '/assets/icons/list.svg',
+  },
+  {
+    title: 'Local trust signal improvements',
+    description: 'Answers, FAQs, photos, badges',
+    icon: '/assets/icons/shield.svg',
+  },
+  {
+    title: 'Clear progress tracking',
+    description: 'Monthly updates, real results',
+    icon: '/assets/icons/trending-up.svg',
+  },
+];
+---
+
+<Section variant="transparent" padding="lg" id="how-it-works">
+  <Container>
+    <!-- Section Header -->
+    <SectionHeader
+      eyebrow="SERVICES INCLUDED"
+      eyebrowIcon={eyebrowIconSvg}
+      title="The key local growth services, brought together in one package."
+      description="LocalUp bundles every essential local growth service into one connected package so nothing gets missed and you see real results."
+      align="center"
+    />
+
+    <div class="flex flex-col gap-[60px] mt-[60px] w-full">
+      <!-- Main Content Grid Wrapper -->
+      <div class="bg-white border border-border-subtle p-[24px] rounded-[24px] shadow-hero flex flex-col lg:flex-row gap-[24px] items-stretch">
+        
+        <!-- Left Accent Card (Dark) -->
+        <Card variant="dark" class="w-full lg:w-[420px] p-[40px] rounded-[20px] flex flex-col justify-between relative overflow-clip shrink-0 min-h-[526px] lg:min-h-[auto]">
+          <div class="z-10">
+            <!-- Icon Badge -->
+            <div class="bg-[#22423f] flex items-center justify-center rounded-[12px] shrink-0 size-[44px] mb-[32px]">
+              <img src="/assets/icons/box.svg" alt="Box icon" class="size-[22px]" />
+            </div>
+            
+            <!-- Text Stack -->
+            <div class="flex flex-col gap-[20px] mb-[32px] max-w-[340px]">
+              <h3 class="font-medium text-[32px] tracking-[-0.5px] leading-[1.1] text-white">
+                No more separate marketing pieces.
+              </h3>
+              <p class="font-normal text-[16px] text-white/70 leading-[1.5]">
+                SEO, website fixes, reviews, listings, and tracking - aligned around one goal: more local enquiries.
+              </p>
+            </div>
+
+            <hr class="border-t border-white/10 w-full mb-[32px]" />
+
+            <!-- Checklist -->
+            <div class="flex flex-col gap-[16px] max-w-[340px]">
+              <CheckItem text="Search visibility" variant="dark" />
+              <CheckItem text="Trust signals" variant="dark" />
+              <CheckItem text="Contact paths" variant="dark" />
+              <CheckItem text="Clear updates" variant="dark" />
+            </div>
+          </div>
+
+          <!-- Bottom Mockup Visual Overlay -->
+          <div class="absolute left-[149px] top-[228px] size-[341px] pointer-events-none select-none z-0">
+            <img src="/assets/images/service-mockup.png" alt="" class="size-full object-contain" />
+          </div>
+        </Card>
+
+        <!-- Right Services Grid (Divided by borders) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-px bg-border-subtle rounded-[16px] overflow-hidden flex-grow min-w-0 self-stretch">
+          {services.map((service) => (
+            <ServiceItem
+              title={service.title}
+              description={service.description}
+              icon={service.icon}
+              class="bg-white h-full"
+            />
+          ))}
+        </div>
+
+      </div>
+
+      <!-- Bottom CTA Card (Lavender) -->
+      <div class="bg-[#ede7fd] border border-border-subtle flex flex-col md:flex-row gap-[24px] items-center p-[24px] rounded-[24px] w-full justify-between shadow-card">
+        <div class="flex gap-[20px] items-center w-full md:w-auto">
+          <!-- Icon container -->
+          <div class="bg-[#f0f2e8] flex items-center justify-center rounded-[24px] shrink-0 size-[56px] text-bg-dark">
+            <img src="/assets/icons/bookmark.svg" alt="Bookmark" class="size-[24px]" />
+          </div>
+          <!-- Text content -->
+          <div class="flex flex-col gap-[4px] items-start">
+            <h4 class="font-semibold text-[17px] tracking-[-0.3px] text-text-primary leading-tight">
+              Not sure what your business needs first?
+            </h4>
+            <p class="font-normal text-[14px] text-text-muted leading-relaxed">
+              Get a free local audit and we'll show you the clearest opportunities across your website, Google presence, reviews, and enquiry path.
+            </p>
+          </div>
+        </div>
+
+        <Button variant="white" href="#audit" class="w-full md:w-auto">
+          Get your free local audit <span class="ml-1 text-[16px]">&gt;</span>
+        </Button>
+      </div>
+
+    </div>
+  </Container>
+</Section>

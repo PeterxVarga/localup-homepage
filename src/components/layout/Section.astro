@@ -1,0 +1,39 @@
+---
+interface Props {
+  id?: string;
+  variant?: 'light' | 'dark' | 'warm' | 'green' | 'lavender' | 'transparent';
+  padding?: 'none' | 'sm' | 'md' | 'lg' | 'xl';
+  class?: string;
+}
+
+const {
+  id,
+  variant = 'transparent',
+  padding = 'lg',
+  class: className = '',
+} = Astro.props;
+
+const bgClasses = {
+  light: 'bg-bg-page',
+  dark: 'bg-bg-dark text-white',
+  warm: 'bg-bg-card-warm',
+  green: 'bg-accent-surface',
+  lavender: 'bg-accent-lavender',
+  transparent: '',
+};
+
+const paddingClasses = {
+  none: 'py-0',
+  sm: 'py-[32px] sm:py-[40px]',
+  md: 'py-[60px] sm:py-[80px]',
+  lg: 'py-[80px] md:py-[100px] lg:py-[120px]',
+  xl: 'py-[100px] md:py-[120px] lg:py-[150px]',
+};
+---
+
+<section
+  id={id}
+  class={`relative w-full ${bgClasses[variant]} ${paddingClasses[padding]} ${className}`}
+>
+  <slot />
+</section>

@@ -1,0 +1,9 @@
+<svg preserveAspectRatio="none" width="100%" height="100%" overflow="visible" style="display: block;" viewBox="0 0 800 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="concentric-circles">
+<circle id="Ellipse" opacity="0.05" cx="400" cy="400" r="299.5" stroke="var(--stroke-0, white)"/>
+<circle id="Ellipse_2" opacity="0.05" cx="400" cy="400" r="249.5" stroke="var(--stroke-0, white)"/>
+<circle id="Ellipse_3" opacity="0.05" cx="400" cy="400" r="199.5" stroke="var(--stroke-0, white)"/>
+<circle id="Ellipse_4" opacity="0.05" cx="400" cy="400" r="149.5" stroke="var(--stroke-0, white)"/>
+<circle id="Ellipse_5" opacity="0.05" cx="400" cy="400" r="99.5" stroke="var(--stroke-0, white)"/>
+</g>
+</svg>
