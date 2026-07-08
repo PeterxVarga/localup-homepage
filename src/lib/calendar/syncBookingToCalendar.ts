@@ -33,7 +33,6 @@ const syncProviders: CalendarProvider[] = [googleCalendarProvider].filter(
 function buildEventDescription(params: {
   name: string;
   email: string;
-  phone?: string;
   businessName: string;
   websiteUrl?: string;
   city: string;
@@ -45,7 +44,6 @@ function buildEventDescription(params: {
   return [
     `Name: ${params.name}`,
     `Email: ${params.email}`,
-    `Phone: ${params.phone || '—'}`,
     `Business: ${params.businessName}`,
     `Website: ${params.websiteUrl || '—'}`,
     `City: ${params.city}`,

@@ -3,7 +3,7 @@
 // ============================================================
 
 import { getResend, isConfigured } from './client';
-import { env, siteUrl } from '../env';
+import { env } from '../env';
 
 interface BookingConfirmationParams {
   email: string;
@@ -23,9 +23,6 @@ export async function sendBookingConfirmation(
   }
 
   const goalsText = params.goals.map((g) => `• ${g}`).join('\n');
-  const bookingLink = params.bookingId
-    ? `${siteUrl()}/audit/booking/${params.bookingId}`
-    : `${siteUrl()}/audit`;
 
   try {
     await getResend().emails.send({
@@ -45,9 +42,6 @@ export async function sendBookingConfirmation(
         '',
         'Goals selected:',
         goalsText,
-        '',
-        'Your booking details:',
-        `  ${bookingLink}`,
         '',
         "If you need to change or cancel, just reply to this email and we'll take care of it.",
         '',

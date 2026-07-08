@@ -3,7 +3,7 @@
 // ============================================================
 
 import { getResend, isConfigured } from './client';
-import { env, siteUrl } from '../env';
+import { env } from '../env';
 
 interface AdminNotificationParams {
   businessName: string;
@@ -31,10 +31,6 @@ export async function sendAdminNotification(
   }
 
   const goalsText = params.goals.map((g) => `• ${g}`).join('\n');
-  const dashboardLink = `${siteUrl()}/dashboard`;
-  const bookingLink = params.bookingId
-    ? `${siteUrl()}/audit/booking/${params.bookingId}`
-    : dashboardLink;
 
   try {
     await getResend().emails.send({
@@ -44,6 +40,7 @@ export async function sendAdminNotification(
       subject: `New LocalUp audit booking — ${params.businessName}`,
       text: [
         `Status: ${params.status}`,
+        params.bookingId ? `Booking ID: ${params.bookingId}` : '',
         '',
         '— Contact —',
         `  Name: ${params.name}`,
@@ -67,9 +64,6 @@ export async function sendAdminNotification(
         params.ctaLocation
           ? `— CTA location —\n  ${params.ctaLocation}\n`
           : '',
-        '—',
-        `Booking details: ${bookingLink}`,
-        `Dashboard: ${dashboardLink}`,
       ].join('\n'),
     });
   } catch (err) {
