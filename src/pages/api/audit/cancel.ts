@@ -1,13 +1,18 @@
 // ============================================================
 // POST /api/audit/cancel
 // Cancels a booking using a management token.
+// Cancellation succeeds even if email sending fails.
 // ============================================================
 
 import type { APIRoute } from 'astro';
 import { isRateLimited, recordRequest, getRetryAfterSeconds } from '../../../lib/rateLimit';
 import { cancelBooking } from '../../../lib/booking/cancelBooking';
-import { sendUserCancellationEmail, sendAdminCancellationEmail } from '../../../lib/email/sendCancellationEmails';
+import {
+  sendUserCancellationEmail,
+  sendAdminCancellationEmail,
+} from '../../../lib/email/sendCancellationEmails';
 import { getManageBookingDetails } from '../../../lib/booking/manageBooking';
+import { trackEvent } from '../../../lib/booking/trackEvent';
 
 const CANCEL_LIMIT = { namespace: 'cancel', max: 5, windowMs: 60_000 };
 
@@ -68,33 +73,66 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  // Send emails only for a fresh cancellation
+  // Send emails only for a fresh cancellation.
+  // Log results and track failures, but never fail the cancellation itself.
   if (!result.alreadyCancelled) {
     const lookup = await getManageBookingDetails(token);
     if (lookup.found) {
       const d = lookup.details;
-      Promise.allSettled([
-        sendUserCancellationEmail({
+      const emailParams = {
+        bookingId: d.bookingId,
+        businessName: d.businessName,
+        name: d.name,
+        email: d.email,
+        slotStart: d.slotStart,
+        slotEnd: d.slotEnd,
+        reason,
+        calendarDeleted: result.calendarDeleted,
+      };
+
+      const [customerResult, adminResult] = await Promise.all([
+        sendUserCancellationEmail(emailParams),
+        sendAdminCancellationEmail(emailParams),
+      ]);
+
+      const emailFailures: string[] = [];
+
+      if (customerResult.success) {
+        console.log('Customer cancellation email sent:', customerResult.emailId);
+      } else {
+        console.error('Customer cancellation email failed:', customerResult.error);
+        emailFailures.push(`customer: ${customerResult.error}`);
+      }
+
+      if (adminResult.success) {
+        console.log('Admin cancellation email sent:', adminResult.emailId);
+      } else {
+        console.error('Admin cancellation email failed:', adminResult.error);
+        emailFailures.push(`admin: ${adminResult.error}`);
+      }
+
+      if (emailFailures.length > 0) {
+        await trackEvent({
+          eventName: 'cancellation_email_failed',
+          sessionId: '',
           bookingId: d.bookingId,
-          businessName: d.businessName,
-          name: d.name,
-          email: d.email,
-          slotStart: d.slotStart,
-          slotEnd: d.slotEnd,
-          reason,
+          metadata: {
+            failures: emailFailures,
+            calendarDeleted: result.calendarDeleted,
+          },
+        });
+      }
+    } else {
+      console.error('Manage lookup failed after successful cancellation');
+      await trackEvent({
+        eventName: 'cancellation_email_failed',
+        sessionId: '',
+        bookingId: result.success ? undefined : undefined,
+        metadata: {
+          reason: 'manage_lookup_failed_after_cancel',
           calendarDeleted: result.calendarDeleted,
-        }),
-        sendAdminCancellationEmail({
-          bookingId: d.bookingId,
-          businessName: d.businessName,
-          name: d.name,
-          email: d.email,
-          slotStart: d.slotStart,
-          slotEnd: d.slotEnd,
-          reason,
-          calendarDeleted: result.calendarDeleted,
-        }),
-      ]).catch((err) => console.error('Cancellation email error:', err));
+        },
+      });
     }
   }
 

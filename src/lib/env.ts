@@ -19,8 +19,11 @@ function read(name: string): string | undefined {
   const fromProcess = process.env[name];
   if (fromProcess !== undefined && fromProcess !== '') return fromProcess;
 
-  const fromImport = import.meta.env[name];
-  if (fromImport !== undefined && fromImport !== '') return fromImport as string;
+  const importMetaEnv = (import.meta as { env?: Record<string, string> }).env;
+  if (importMetaEnv !== undefined) {
+    const fromImport = importMetaEnv[name];
+    if (fromImport !== undefined && fromImport !== '') return fromImport;
+  }
 
   return undefined;
 }

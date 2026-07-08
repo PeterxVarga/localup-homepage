@@ -16,6 +16,16 @@ interface CancellationParams {
   calendarDeleted: boolean;
 }
 
+export interface EmailSendResult {
+  success: true;
+  emailId: string;
+}
+
+export interface EmailSendError {
+  success: false;
+  error: string;
+}
+
 function formatSlot(start: string, end: string): string {
   const startDate = new Date(start);
   const endDate = new Date(end);
@@ -51,17 +61,16 @@ function formatCancelledAt(): string {
  */
 export async function sendUserCancellationEmail(
   params: CancellationParams,
-): Promise<void> {
+): Promise<EmailSendResult | EmailSendError> {
   if (!isConfigured()) {
-    console.warn('Resend not configured — skipping user cancellation email');
-    return;
+    return { success: false, error: 'Resend not configured' };
   }
 
   const slotText = formatSlot(params.slotStart, params.slotEnd);
   const bookNewUrl = `${siteUrl()}/audit`;
 
   try {
-    await getResend().emails.send({
+    const { data, error } = await getResend().emails.send({
       from: env.emailFrom,
       replyTo: env.emailReplyTo,
       to: params.email,
@@ -80,8 +89,15 @@ export async function sendUserCancellationEmail(
         '— LocalUp csapat',
       ].join('\n'),
     });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, emailId: data?.id ?? 'unknown' };
   } catch (err) {
-    console.error('User cancellation email failed:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
   }
 }
 
@@ -91,10 +107,9 @@ export async function sendUserCancellationEmail(
  */
 export async function sendAdminCancellationEmail(
   params: CancellationParams,
-): Promise<void> {
+): Promise<EmailSendResult | EmailSendError> {
   if (!isConfigured()) {
-    console.warn('Resend not configured — skipping admin cancellation email');
-    return;
+    return { success: false, error: 'Resend not configured' };
   }
 
   const slotText = formatSlot(params.slotStart, params.slotEnd);
@@ -106,7 +121,7 @@ export async function sendAdminCancellationEmail(
     : `Foglalás lemondva — ${params.businessName}`;
 
   try {
-    await getResend().emails.send({
+    const { data, error } = await getResend().emails.send({
       from: env.emailFrom,
       replyTo: env.emailReplyTo,
       to: env.adminEmail,
@@ -132,7 +147,14 @@ export async function sendAdminCancellationEmail(
         '— LocalUp booking system',
       ].join('\n'),
     });
+
+    if (error) {
+      return { success: false, error: error.message };
+    }
+
+    return { success: true, emailId: data?.id ?? 'unknown' };
   } catch (err) {
-    console.error('Admin cancellation email failed:', err);
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
   }
 }

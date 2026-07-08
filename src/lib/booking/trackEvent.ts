@@ -16,6 +16,7 @@ export type AuditEventName =
   | 'audit_booking_failed'
   | 'booking_cancelled'
   | 'booking_cancel_failed'
+  | 'cancellation_email_failed'
   | 'booking_reschedule_started'
   | 'booking_rescheduled'
   | 'booking_reschedule_failed';

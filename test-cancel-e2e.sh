@@ -109,16 +109,17 @@ echo "✅ Repeated cancel is idempotent"
 echo ""
 echo "=== 6. Slot is available again ==="
 SLOTS_AFTER=$(curl -s http://localhost:4321/api/audit/available-slots)
-OCCUPIED=$(echo "$SLOTS_AFTER" | python3 -c "
+AVAILABLE=$(echo "$SLOTS_AFTER" | python3 -c "
 import sys, json
 data = json.load(sys.stdin)
 print(any(s['start'] == '$SLOT_START' and s['end'] == '$SLOT_END' for day in data.get('slots', []) for s in day.get('slots', [])))
 ")
-if [ "$OCCUPIED" = "True" ]; then
-  echo "❌ Cancelled slot is still shown as available"
+if [ "$AVAILABLE" = "True" ]; then
+  echo "✅ Cancelled slot is available again"
+else
+  echo "❌ Cancelled slot is not available after cancellation"
   exit 1
 fi
-echo "✅ Cancelled slot is no longer in available slots"
 
 echo ""
 echo "=== CANCEL E2E TESTS PASSED ==="
