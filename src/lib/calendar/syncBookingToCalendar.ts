@@ -94,6 +94,8 @@ export async function syncBookingToCalendar(params: {
           provider: provider.id,
           status: 'synced',
           providerEventId: event.eventId,
+          htmlLink: event.htmlLink,
+          meetLink: event.meetLink,
         });
       } else {
         results.push({
@@ -126,9 +128,13 @@ export async function syncBookingToCalendar(params: {
     overallStatus = 'failed';
   }
 
+  const primarySuccess = successful[0];
+
   return {
     results,
-    primaryEventId: successful[0]?.providerEventId ?? null,
+    primaryEventId: primarySuccess?.providerEventId ?? null,
+    htmlLink: primarySuccess?.htmlLink,
+    meetLink: primarySuccess?.meetLink,
     overallStatus,
   };
 }

@@ -20,6 +20,7 @@ interface AdminNotificationParams {
   ctaLocation?: string;
   status: string;
   bookingId?: string;
+  meetLink?: string;
 }
 
 export async function sendAdminNotification(
@@ -61,6 +62,9 @@ export async function sendAdminNotification(
         `  Start: ${params.slotStart}`,
         `  End: ${params.slotEnd}`,
         '',
+        params.meetLink
+          ? `— Google Meet —\n  ${params.meetLink}\n`
+          : '',
         params.ctaLocation
           ? `— CTA location —\n  ${params.ctaLocation}\n`
           : '',

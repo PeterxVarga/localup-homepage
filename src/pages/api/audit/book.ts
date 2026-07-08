@@ -221,7 +221,7 @@ export const POST: APIRoute = async ({ request }) => {
       date: dateStr,
       timeRange: `${timeStr} – ${endTimeStr}`,
       goals: goalLabels,
-      bookingId,
+      meetLink: syncOutcome.meetLink,
     }),
     sendAdminNotification({
       businessName: input.businessName,
@@ -238,6 +238,7 @@ export const POST: APIRoute = async ({ request }) => {
       ctaLocation: input.ctaLocation,
       status: finalStatus,
       bookingId,
+      meetLink: syncOutcome.meetLink,
     }),
   ]).catch((err) => console.error('Email send error:', err));
 

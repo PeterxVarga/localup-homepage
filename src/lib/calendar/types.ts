@@ -80,6 +80,8 @@ export interface ProviderSyncResult {
   provider: string;
   status: 'synced' | 'failed';
   providerEventId?: string;
+  htmlLink?: string;
+  meetLink?: string;
   error?: string;
 }
 
@@ -90,6 +92,10 @@ export interface CalendarSyncOutcome {
   results: ProviderSyncResult[];
   /** First successful provider event ID (for backward compat) */
   primaryEventId: string | null;
+  /** Web link to the first successful event in the provider's UI */
+  htmlLink?: string;
+  /** Video conference link (e.g. Google Meet), if created */
+  meetLink?: string;
   /**
    * Overall sync status:
    * - synced: all providers succeeded

@@ -11,7 +11,7 @@ interface BookingConfirmationParams {
   date: string; // formatted date string
   timeRange: string; // e.g. "10:00 AM – 10:30 AM"
   goals: string[];
-  bookingId?: string;
+  meetLink?: string;
 }
 
 export async function sendBookingConfirmation(
@@ -43,6 +43,9 @@ export async function sendBookingConfirmation(
         'Goals selected:',
         goalsText,
         '',
+        ...(params.meetLink
+          ? ['Join Google Meet:', `  ${params.meetLink}`, '']
+          : []),
         "If you need to change or cancel, just reply to this email and we'll take care of it.",
         '',
         '— The LocalUp team',
