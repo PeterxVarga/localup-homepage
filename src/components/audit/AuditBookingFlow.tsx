@@ -116,6 +116,8 @@ export default function AuditBookingFlow() {
   };
 
   const submitBooking = async () => {
+    if (submitting) return;
+
     const errs: typeof timeErrors = {};
     if (!timeData.name.trim()) errs.name = 'Your name is required';
     if (!timeData.email.trim() || !timeData.email.includes('@')) errs.email = 'Please enter a valid email address';
@@ -178,11 +180,10 @@ export default function AuditBookingFlow() {
 
   const trackServer = async (eventName: string, metadata: Record<string, unknown>) => {
     try {
-      await fetch('/api/audit/book', {
+      await fetch('/api/audit/track', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          _trackOnly: true,
           eventName,
           sessionId,
           metadata: { ...metadata, cta_location: urlParams.ctaLocation },

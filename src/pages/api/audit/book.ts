@@ -1,6 +1,7 @@
 // ============================================================
 // POST /api/audit/book
 // Full booking flow: validate, check slot, insert, calendar, email, track
+// Rate limit: 3 real booking attempts / 10 min / IP
 // ============================================================
 
 import type { APIRoute } from 'astro';
@@ -11,52 +12,37 @@ import { trackEvent } from '../../../lib/booking/trackEvent';
 import { syncBookingToCalendar, isSlotAvailable } from '../../../lib/calendar/syncBookingToCalendar';
 import { sendBookingConfirmation } from '../../../lib/email/sendBookingConfirmation';
 import { sendAdminNotification } from '../../../lib/email/sendAdminNotification';
+import { isRateLimited, recordRequest, getRetryAfterSeconds } from '../../../lib/rateLimit';
 
-// Simple in-memory rate limiter (V1: per IP, 3 requests per minute)
-const rateLimitMap = new Map<string, number[]>();
-const RATE_LIMIT_MAX = 3;
-const RATE_LIMIT_WINDOW_MS = 60_000;
+const BOOKING_LIMIT = { namespace: 'book', max: 3, windowMs: 10 * 60_000 };
 
-function isRateLimited(ip: string): boolean {
-  const now = Date.now();
-  const timestamps = rateLimitMap.get(ip) ?? [];
-  const recent = timestamps.filter((t) => now - t < RATE_LIMIT_WINDOW_MS);
-  rateLimitMap.set(ip, recent);
-  return recent.length >= RATE_LIMIT_MAX;
-}
-
-function recordRequest(ip: string): void {
-  const timestamps = rateLimitMap.get(ip) ?? [];
-  timestamps.push(Date.now());
-  rateLimitMap.set(ip, timestamps);
-}
-
-function getClientIp(request: Request): string {
-  return (
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    request.headers.get('cf-connecting-ip') ||
-    'unknown'
-  );
-}
-
-function jsonResponse(body: unknown, status: number): Response {
+function jsonResponse(
+  body: unknown,
+  status: number,
+  headers?: Record<string, string>,
+): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...headers },
   });
 }
 
 export const POST: APIRoute = async ({ request }) => {
-  const ip = getClientIp(request);
-
-  // Rate limit
-  if (isRateLimited(ip)) {
+  // Rate limit: only real booking submissions are counted
+  if (isRateLimited(request, BOOKING_LIMIT)) {
+    const retryAfter = getRetryAfterSeconds(request, BOOKING_LIMIT);
     return jsonResponse(
-      { success: false, error: 'rate_limited', message: 'Too many requests. Please wait.' },
+      {
+        success: false,
+        error: 'rate_limited',
+        message:
+          'Túl sok foglalási próbálkozás. Kérlek várj pár percet, majd próbáld újra.',
+      },
       429,
+      { 'Retry-After': String(retryAfter) },
     );
   }
-  recordRequest(ip);
+  recordRequest(request, BOOKING_LIMIT);
 
   let body: unknown;
   try {
@@ -70,25 +56,6 @@ export const POST: APIRoute = async ({ request }) => {
 
   const bodyRecord = body as Record<string, unknown>;
 
-  // --- Best-effort tracking path (used by the client funnel events) ---
-  if (bodyRecord?._trackOnly === true) {
-    const sessionId = typeof bodyRecord.sessionId === 'string' ? bodyRecord.sessionId : crypto.randomUUID();
-    const eventName = typeof bodyRecord.eventName === 'string' ? bodyRecord.eventName : 'audit_unknown_event';
-    const metadata = typeof bodyRecord.metadata === 'object' && bodyRecord.metadata !== null
-      ? (bodyRecord.metadata as Record<string, unknown>)
-      : {};
-
-    await trackEvent({
-      eventName: eventName as import('../../../lib/booking/trackEvent').AuditEventName,
-      sessionId,
-      ctaLocation: typeof bodyRecord.ctaLocation === 'string' ? bodyRecord.ctaLocation : undefined,
-      sourceUrl: typeof bodyRecord.sourceUrl === 'string' ? bodyRecord.sourceUrl : undefined,
-      metadata,
-    });
-
-    return jsonResponse({ success: true, tracked: true }, 200);
-  }
-
   // Honeypot check
   if (bodyRecord?.honeypot) {
     // Silently accept (bot filled hidden field)
@@ -99,7 +66,11 @@ export const POST: APIRoute = async ({ request }) => {
   const parsed = auditBookingSchema.safeParse(body);
   if (!parsed.success) {
     return jsonResponse(
-      { success: false, error: 'validation', message: parsed.error.issues[0]?.message || 'Invalid input' },
+      {
+        success: false,
+        error: 'validation',
+        message: parsed.error.issues[0]?.message || 'Invalid input',
+      },
       400,
     );
   }
@@ -112,7 +83,11 @@ export const POST: APIRoute = async ({ request }) => {
   // protection. If it's not configured, we cannot accept bookings.
   if (!isSupabaseConfigured()) {
     return jsonResponse(
-      { success: false, error: 'service_unavailable', message: 'Booking service is not configured' },
+      {
+        success: false,
+        error: 'service_unavailable',
+        message: 'Booking service is not configured',
+      },
       503,
     );
   }
@@ -139,7 +114,8 @@ export const POST: APIRoute = async ({ request }) => {
         {
           success: false,
           error: 'slot_taken',
-          message: 'That time was just taken. Please choose another available slot.',
+          message:
+            'That time was just taken. Please choose another available slot.',
         },
         409,
       );
@@ -173,14 +149,22 @@ export const POST: APIRoute = async ({ request }) => {
     slotEnd: input.slotEnd,
   });
 
-  if (syncOutcome.overallStatus === 'synced' || syncOutcome.overallStatus === 'partially_synced') {
-    await updateBookingStatus(bookingId, 'booked', syncOutcome.primaryEventId ?? undefined);
+  if (
+    syncOutcome.overallStatus === 'synced' ||
+    syncOutcome.overallStatus === 'partially_synced'
+  ) {
+    await updateBookingStatus(
+      bookingId,
+      'booked',
+      syncOutcome.primaryEventId ?? undefined,
+    );
   } else {
     await updateBookingStatus(bookingId, 'calendar_failed');
   }
 
   const finalStatus =
-    syncOutcome.overallStatus === 'synced' || syncOutcome.overallStatus === 'partially_synced'
+    syncOutcome.overallStatus === 'synced' ||
+    syncOutcome.overallStatus === 'partially_synced'
       ? 'booked'
       : 'calendar_failed';
 
@@ -245,7 +229,8 @@ export const POST: APIRoute = async ({ request }) => {
   // 5. Track: confirmed or failed
   await trackEvent({
     eventName:
-      syncOutcome.overallStatus === 'failed' || syncOutcome.overallStatus === 'not_configured'
+      syncOutcome.overallStatus === 'failed' ||
+      syncOutcome.overallStatus === 'not_configured'
         ? 'audit_booking_failed'
         : 'audit_booking_confirmed',
     sessionId,
