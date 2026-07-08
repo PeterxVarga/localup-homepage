@@ -46,6 +46,13 @@ export const env = {
   // Email sender identity
   emailFrom: read('EMAIL_FROM') ?? 'LocalUp <hello@localup.hu>',
   emailReplyTo: read('EMAIL_REPLY_TO') ?? 'peter@localup.hu',
+
+  // Booking management token encryption (32 bytes as 64 hex chars)
+  bookingTokenEncryptionKey: read('BOOKING_TOKEN_ENCRYPTION_KEY'),
+
+  // Cancel / reschedule cutoff hours
+  auditCancelCutoffHours: parseInt(read('AUDIT_CANCEL_CUTOFF_HOURS') ?? '12', 10),
+  auditRescheduleCutoffHours: parseInt(read('AUDIT_RESCHEDULE_CUTOFF_HOURS') ?? '12', 10),
 };
 
 /**

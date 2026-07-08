@@ -7,7 +7,7 @@
 import type { APIRoute } from 'astro';
 import { auditBookingSchema } from '../../../lib/audit/validation';
 import { isSupabaseConfigured } from '../../../lib/supabase';
-import { createBooking, updateBookingStatus } from '../../../lib/booking/createBooking';
+import { createBooking, updateBookingCalendarSync } from '../../../lib/booking/createBooking';
 import { trackEvent } from '../../../lib/booking/trackEvent';
 import { syncBookingToCalendar, isSlotAvailable } from '../../../lib/calendar/syncBookingToCalendar';
 import { sendBookingConfirmation } from '../../../lib/email/sendBookingConfirmation';
@@ -131,7 +131,7 @@ export const POST: APIRoute = async ({ request }) => {
     return jsonResponse(result, result.error === 'slot_taken' ? 409 : 500);
   }
 
-  const { bookingId } = result;
+  const { bookingId, managementToken } = result;
 
   // 3. Sync to calendar providers (provider-agnostic)
   const syncOutcome = await syncBookingToCalendar({
@@ -149,24 +149,20 @@ export const POST: APIRoute = async ({ request }) => {
     slotEnd: input.slotEnd,
   });
 
-  if (
+  const calendarSyncStatus: 'synced' | 'failed' =
     syncOutcome.overallStatus === 'synced' ||
     syncOutcome.overallStatus === 'partially_synced'
-  ) {
-    await updateBookingStatus(
-      bookingId,
-      'booked',
-      syncOutcome.primaryEventId ?? undefined,
-    );
-  } else {
-    await updateBookingStatus(bookingId, 'calendar_failed');
-  }
+      ? 'synced'
+      : 'failed';
 
-  const finalStatus =
-    syncOutcome.overallStatus === 'synced' ||
-    syncOutcome.overallStatus === 'partially_synced'
-      ? 'booked'
-      : 'calendar_failed';
+  await updateBookingCalendarSync(
+    bookingId,
+    calendarSyncStatus,
+    syncOutcome.primaryEventId ?? undefined,
+    syncOutcome.meetLink,
+  );
+
+  const finalStatus = calendarSyncStatus === 'synced' ? 'booked' : 'calendar_failed';
 
   // 4. Send emails
   const slotDate = new Date(input.slotStart);
@@ -206,6 +202,7 @@ export const POST: APIRoute = async ({ request }) => {
       timeRange: `${timeStr} – ${endTimeStr}`,
       goals: goalLabels,
       meetLink: syncOutcome.meetLink,
+      manageToken: managementToken,
     }),
     sendAdminNotification({
       businessName: input.businessName,
@@ -223,6 +220,7 @@ export const POST: APIRoute = async ({ request }) => {
       status: finalStatus,
       bookingId,
       meetLink: syncOutcome.meetLink,
+      manageToken: managementToken,
     }),
   ]).catch((err) => console.error('Email send error:', err));
 
@@ -242,6 +240,7 @@ export const POST: APIRoute = async ({ request }) => {
     {
       success: true,
       bookingId,
+      managementToken,
       slotStart: input.slotStart,
       slotEnd: input.slotEnd,
       status: finalStatus,

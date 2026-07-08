@@ -41,6 +41,13 @@ export type CreateEventResult =
     };
 
 /**
+ * Discriminated union for event deletion results.
+ */
+export type DeleteEventResult =
+  | { ok: true; provider: string; eventId: string }
+  | { ok: false; provider: string; eventId: string; error: string; code?: string };
+
+/**
  * Calendar provider interface.
  * Implementations: Google, Outlook, CalDAV, ICS feed, etc.
  *
@@ -71,6 +78,9 @@ export interface CalendarProvider {
 
   /** Create a calendar event */
   createEvent?(params: CreateEventParams): Promise<CreateEventResult>;
+
+  /** Delete a calendar event by provider event ID */
+  deleteEvent?(eventId: string): Promise<DeleteEventResult>;
 }
 
 /**

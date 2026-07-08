@@ -2,7 +2,7 @@
 // AuditBookingFlow — main state machine (redesigned wrapper)
 // ============================================================
 
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import ProgressIndicator from './ProgressIndicator';
 import StepBusiness, { type BusinessData } from './StepBusiness';
 import StepGoals, { type GoalsData } from './StepGoals';
@@ -29,6 +29,7 @@ const steps = [
 export default function AuditBookingFlow() {
   const [step, setStep] = useState<Step>(1);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
   const getUrlParams = () => {
@@ -116,64 +117,69 @@ export default function AuditBookingFlow() {
   };
 
   const submitBooking = async () => {
-    if (submitting) return;
+    if (submittingRef.current) return;
 
-    const errs: typeof timeErrors = {};
-    if (!timeData.name.trim()) errs.name = 'Your name is required';
-    if (!timeData.email.trim() || !timeData.email.includes('@')) errs.email = 'Please enter a valid email address';
-    if (!timeData.slotStart) errs.slot = 'Please select a time slot';
-    setTimeErrors(errs);
-    if (Object.keys(errs).length > 0) return;
-
+    submittingRef.current = true;
     setSubmitting(true);
-    setServerError(null);
 
     try {
-      const res = await fetch('/api/audit/book', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          businessName: businessData.businessName,
-          websiteUrl: businessData.websiteUrl || '',
-          noWebsite: businessData.noWebsite,
-          city: businessData.city,
-          businessType: businessData.businessType,
-          goals: goalsData.goals,
-          notes: goalsData.notes || '',
-          name: timeData.name,
-          email: timeData.email,
-          phone: timeData.phone || '',
-          slotStart: timeData.slotStart,
-          slotEnd: timeData.slotEnd,
-          ctaLocation: urlParams.ctaLocation,
-          sourceUrl: typeof window !== 'undefined' ? window.location.href : '',
-          sessionId,
-        }),
-      });
+      const errs: typeof timeErrors = {};
+      if (!timeData.name.trim()) errs.name = 'Your name is required';
+      if (!timeData.email.trim() || !timeData.email.includes('@')) errs.email = 'Please enter a valid email address';
+      if (!timeData.slotStart) errs.slot = 'Please select a time slot';
+      setTimeErrors(errs);
+      if (Object.keys(errs).length > 0) return;
 
-      const result = await res.json();
+      setServerError(null);
 
-      if (result.success) {
-        setConfirmation({
-          businessName: businessData.businessName,
-          goals: goalsData.goals,
-          slotStart: timeData.slotStart,
-          slotEnd: timeData.slotEnd,
-          email: timeData.email,
-          status: result.status || 'booked',
+      try {
+        const res = await fetch('/api/audit/book', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            businessName: businessData.businessName,
+            websiteUrl: businessData.websiteUrl || '',
+            noWebsite: businessData.noWebsite,
+            city: businessData.city,
+            businessType: businessData.businessType,
+            goals: goalsData.goals,
+            notes: goalsData.notes || '',
+            name: timeData.name,
+            email: timeData.email,
+            phone: timeData.phone || '',
+            slotStart: timeData.slotStart,
+            slotEnd: timeData.slotEnd,
+            ctaLocation: urlParams.ctaLocation,
+            sourceUrl: typeof window !== 'undefined' ? window.location.href : '',
+            sessionId,
+          }),
         });
-        setStep('confirmation');
-      } else {
-        if (result.error === 'slot_taken') {
-          setTimeErrors({ slot: result.message });
-          setTimeData({ ...timeData, slotStart: '', slotEnd: '' });
+
+        const result = await res.json();
+
+        if (result.success) {
+          setConfirmation({
+            businessName: businessData.businessName,
+            goals: goalsData.goals,
+            slotStart: timeData.slotStart,
+            slotEnd: timeData.slotEnd,
+            email: timeData.email,
+            status: result.status || 'booked',
+          });
+          setStep('confirmation');
         } else {
-          setServerError(result.message || 'Something went wrong. Please try again.');
+          if (result.error === 'slot_taken') {
+            setTimeErrors({ slot: result.message });
+            setTimeData({ ...timeData, slotStart: '', slotEnd: '' });
+          } else {
+            setServerError(result.message || 'Something went wrong. Please try again.');
+          }
         }
+      } catch {
+        setServerError('Connection lost. Please check your internet and try again.');
       }
-    } catch {
-      setServerError('Connection lost. Please check your internet and try again.');
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   };

@@ -128,4 +128,31 @@ export const googleCalendarProvider: CalendarProvider = {
       };
     }
   },
+
+  async deleteEvent(eventId: string) {
+    if (!isGoogleCalendarConfigured()) {
+      return {
+        ok: false,
+        provider: 'google',
+        eventId,
+        error: 'Google Calendar not configured',
+        code: 'not_configured',
+      } as const;
+    }
+
+    try {
+      const { calendar, calendarId } = getGoogleCalendarClient();
+      await calendar.events.delete({ calendarId, eventId });
+      return { ok: true as const, provider: 'google', eventId };
+    } catch (err) {
+      console.error('Google Calendar event deletion failed:', err);
+      return {
+        ok: false,
+        provider: 'google',
+        eventId,
+        error: 'Google Calendar API error',
+        code: 'calendar_api_error',
+      } as const;
+    }
+  },
 };

@@ -3,7 +3,7 @@
 // ============================================================
 
 import { getResend, isConfigured } from './client';
-import { env } from '../env';
+import { env, siteUrl } from '../env';
 
 interface AdminNotificationParams {
   businessName: string;
@@ -21,6 +21,7 @@ interface AdminNotificationParams {
   status: string;
   bookingId?: string;
   meetLink?: string;
+  manageToken: string;
 }
 
 export async function sendAdminNotification(
@@ -32,6 +33,7 @@ export async function sendAdminNotification(
   }
 
   const goalsText = params.goals.map((g) => `• ${g}`).join('\n');
+  const manageUrl = `${siteUrl()}/audit/manage/${params.manageToken}`;
 
   try {
     await getResend().emails.send({
@@ -65,6 +67,7 @@ export async function sendAdminNotification(
         params.meetLink
           ? `— Google Meet —\n  ${params.meetLink}\n`
           : '',
+        `— Manage booking —\n  ${manageUrl}\n`,
         params.ctaLocation
           ? `— CTA location —\n  ${params.ctaLocation}\n`
           : '',

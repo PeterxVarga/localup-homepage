@@ -1,0 +1,72 @@
+---
+// ============================================================
+// /audit/manage/[token]
+// Secure manage-your-booking page.
+// The raw token is used server-side only; the client component
+// receives details + a hidden token for the cancel POST.
+// ============================================================
+
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import ManageBookingClient from '../../../components/audit/ManageBookingClient.tsx';
+import { getManageBookingDetails } from '../../../lib/booking/manageBooking';
+
+const { token } = Astro.params;
+
+// Security headers
+Astro.response.headers.set('Cache-Control', 'no-store');
+Astro.response.headers.set('Referrer-Policy', 'no-referrer');
+Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
+
+let notFound = false;
+let details: import('../../../components/audit/ManageBookingClient').ManageBookingClientProps['details'] | null = null;
+
+if (!token) {
+  notFound = true;
+} else {
+  const result = await getManageBookingDetails(token);
+  if (!result.found || result.details.isExpired) {
+    notFound = true;
+  } else {
+    const d = result.details;
+    details = {
+      bookingId: d.bookingId,
+      businessName: d.businessName,
+      name: d.name,
+      email: d.email,
+      slotStart: d.slotStart,
+      slotEnd: d.slotEnd,
+      meetLink: d.meetLink,
+      isCancelled: d.isCancelled,
+      cancelCutoffPassed: d.cancelCutoffPassed,
+    };
+  }
+}
+---
+
+<BaseLayout
+  title="Manage your LocalUp audit booking"
+  description="View, reschedule or cancel your LocalUp audit call."
+>
+  <main class="min-h-screen bg-bg-cream">
+    <section class="py-[80px] md:py-[120px]">
+      <div class="max-w-[640px] mx-auto px-[20px]">
+        {notFound || !details ? (
+          <div class="bg-white border border-border-subtle rounded-[24px] p-[32px] md:p-[48px] shadow-card">
+            <h1 class="font-medium text-[28px] md:text-[36px] leading-[1.1] tracking-[-0.5px] text-text-primary mb-[16px]">
+              Link not found
+            </h1>
+            <p class="text-[16px] text-text-secondary leading-relaxed">
+              This booking link is invalid or has expired. If you need help, please reply to your confirmation email.
+            </p>
+          </div>
+        ) : (
+          <ManageBookingClient
+            details={details}
+            token={token!}
+            client:load
+          />
+        )}
+      </div>
+    </section>
+  </main>
+</BaseLayout>

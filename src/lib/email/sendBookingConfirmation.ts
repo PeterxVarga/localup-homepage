@@ -3,7 +3,7 @@
 // ============================================================
 
 import { getResend, isConfigured } from './client';
-import { env } from '../env';
+import { env, siteUrl } from '../env';
 
 interface BookingConfirmationParams {
   email: string;
@@ -12,6 +12,7 @@ interface BookingConfirmationParams {
   timeRange: string; // e.g. "10:00 AM – 10:30 AM"
   goals: string[];
   meetLink?: string;
+  manageToken: string;
 }
 
 export async function sendBookingConfirmation(
@@ -23,6 +24,7 @@ export async function sendBookingConfirmation(
   }
 
   const goalsText = params.goals.map((g) => `• ${g}`).join('\n');
+  const manageUrl = `${siteUrl()}/audit/manage/${params.manageToken}`;
 
   try {
     await getResend().emails.send({
@@ -46,7 +48,10 @@ export async function sendBookingConfirmation(
         ...(params.meetLink
           ? ['Join Google Meet:', `  ${params.meetLink}`, '']
           : []),
-        "If you need to change or cancel, just reply to this email and we'll take care of it.",
+        'Manage your booking:',
+        `  ${manageUrl}`,
+        '',
+        "If you need to change or cancel, just reply to this email or use the link above.",
         '',
         '— The LocalUp team',
       ].join('\n'),

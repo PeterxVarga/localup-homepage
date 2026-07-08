@@ -5,12 +5,18 @@
 
 import { getSupabase } from '../supabase';
 import type { AuditBookingInput } from '../audit/validation';
+import {
+  generateManagementToken,
+  hashManagementToken,
+  encryptManagementToken,
+} from '../tokens/crypto';
 
 export interface CreateBookingResult {
   success: true;
   bookingId: string;
   slotStart: string;
   slotEnd: string;
+  managementToken: string;
 }
 
 export interface CreateBookingError {
@@ -19,12 +25,25 @@ export interface CreateBookingError {
   message: string;
 }
 
+function calendarSyncStatusFromOldStatus(
+  status: 'calendar_pending' | 'booked' | 'calendar_failed',
+): 'pending' | 'synced' | 'failed' {
+  switch (status) {
+    case 'calendar_pending':
+      return 'pending';
+    case 'booked':
+      return 'synced';
+    case 'calendar_failed':
+      return 'failed';
+  }
+}
+
 /**
- * Insert a new booking with status 'calendar_pending'.
+ * Insert a new booking with lifecycle and calendar-sync statuses separated.
  * The caller is responsible for:
  *   - Zod validation (already done before calling this)
  *   - Google Calendar event creation (after insert)
- *   - Updating status to 'booked' or 'calendar_failed'
+ *   - Updating statuses after sync attempt
  */
 export async function createBooking(
   input: AuditBookingInput,
@@ -33,7 +52,7 @@ export async function createBooking(
   const { data: conflict } = await getSupabase()
     .from('audit_bookings')
     .select('id')
-    .in('status', ['calendar_pending', 'booked', 'calendar_failed'])
+    .in('booking_status', ['pending', 'booked'])
     .eq('selected_slot_start', input.slotStart)
     .maybeSingle();
 
@@ -46,7 +65,16 @@ export async function createBooking(
     };
   }
 
-  // 2. Insert booking
+  // 2. Generate secure management token
+  const managementToken = generateManagementToken();
+  const tokenHash = hashManagementToken(managementToken);
+  const tokenEncrypted = encryptManagementToken(managementToken);
+  const tokenExpiresAt = new Date(
+    new Date(input.slotEnd).getTime() + 30 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  // 3. Insert booking
+  //    Dual-write old `status` for backward compatibility during deploy transition.
   const { data: booking, error: insertError } = await getSupabase()
     .from('audit_bookings')
     .insert({
@@ -63,6 +91,12 @@ export async function createBooking(
       selected_slot_start: input.slotStart,
       selected_slot_end: input.slotEnd,
       status: 'calendar_pending',
+      booking_status: 'booked',
+      calendar_sync_status: 'pending',
+      meet_link: null,
+      management_token_hash: tokenHash,
+      management_token_encrypted: tokenEncrypted,
+      management_token_expires_at: tokenExpiresAt,
       booking_type: 'localup_audit',
       source: 'website',
       funnel: 'audit',
@@ -87,25 +121,29 @@ export async function createBooking(
     bookingId: booking.id,
     slotStart: input.slotStart,
     slotEnd: input.slotEnd,
+    managementToken,
   };
 }
 
 /**
  * Update booking status after calendar provider sync attempt.
- *
- * TODO V2: replace google_calendar_event_id column with a separate
- * calendar_sync_events table supporting multiple providers:
- *   provider | provider_event_id | status | synced_at
+ * Dual-writes old `status` for backward compatibility.
  */
-export async function updateBookingStatus(
+export async function updateBookingCalendarSync(
   bookingId: string,
-  status: 'booked' | 'calendar_failed',
+  calendarSyncStatus: 'synced' | 'failed',
   googleCalendarEventId?: string,
+  meetLink?: string,
 ): Promise<void> {
+  const oldStatus =
+    calendarSyncStatus === 'synced' ? 'booked' : 'calendar_failed';
+
   await getSupabase()
     .from('audit_bookings')
     .update({
-      status,
+      calendar_sync_status: calendarSyncStatus,
+      status: oldStatus,
+      ...(meetLink ? { meet_link: meetLink } : {}),
       ...(googleCalendarEventId
         ? { google_calendar_event_id: googleCalendarEventId }
         : {}),
@@ -124,3 +162,22 @@ export async function getBookingById(bookingId: string) {
     .single();
   return data;
 }
+
+/**
+ * Get booking by management token hash.
+ * Does NOT decrypt or expose the raw token.
+ */
+export async function getBookingByTokenHash(tokenHash: string) {
+  const { data } = await getSupabase()
+    .from('audit_bookings')
+    .select('*')
+    .eq('management_token_hash', tokenHash)
+    .maybeSingle();
+  return data;
+}
+
+/**
+ * Convenience: map an old-style status to the new calendar_sync_status.
+ * Remove once the old `status` column is dropped.
+ */
+export { calendarSyncStatusFromOldStatus };
