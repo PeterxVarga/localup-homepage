@@ -1,0 +1,114 @@
+---
+// ============================================================
+// /audit — LocalUp Audit Booking Flow (redesigned)
+// ============================================================
+
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Navigation from '../components/sections/Navigation.astro';
+import AuditBookingFlow from '../components/audit/AuditBookingFlow';
+import { auditPageContent } from '../data/audit-content';
+
+const { meta, hero, faq } = auditPageContent;
+---
+
+<BaseLayout title={meta.title} description={meta.description}>
+  <Navigation />
+  <main class="min-h-screen bg-bg-page">
+    <!-- Hero / header area -->
+    <section class="relative w-full pt-[32px] md:pt-[48px] pb-[40px] md:pb-[60px]">
+      <div class="mx-auto max-w-[640px] px-[24px] sm:px-[32px] w-full">
+        <div class="hero-animate flex flex-col items-center gap-[20px] text-center mb-[48px] md:mb-[64px]">
+          <!-- Eyebrow pill -->
+          <div class="inline-flex items-center gap-[8px] bg-accent-soft/60 text-text-primary px-[14px] py-[6px] rounded-full select-none">
+            <svg viewBox="0 0 14 14" fill="none" class="size-[12px]" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12.8333 1.16667C12.8333 1.16667 9.91667 1.75 8.16667 3.5C6.41667 5.25 6.41667 7.58333 6.41667 7.58333C6.41667 7.58333 8.75 7.58333 10.5 5.83333C12.25 4.08333 12.8333 1.16667 12.8333 1.16667Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M7.58333 6.41667C7.58333 6.41667 5.25 6.41667 3.5 8.16667C1.75 9.91667 1.16667 12.8333 1.16667 12.8333C1.16667 12.8333 4.08333 12.25 5.83333 10.5C7.58333 8.75 7.58333 6.41667 7.58333 6.41667Z" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="font-semibold text-[11px] uppercase tracking-wider whitespace-nowrap leading-none">
+              {hero.eyebrow}
+            </span>
+          </div>
+
+          <h1 class="font-medium text-[32px] sm:text-[40px] md:text-[48px] leading-[1.1] text-text-primary tracking-[-1.5px] md:tracking-[-2px]">
+            {hero.title}
+          </h1>
+          <p class="font-normal text-[16px] sm:text-[18px] leading-[1.6] text-text-secondary tracking-[-0.3px] max-w-[480px]">
+            {hero.description}
+          </p>
+        </div>
+
+        <!-- Booking flow card -->
+        <div class="hero-animate-delay-1 bg-white border border-border-subtle rounded-[24px] shadow-card p-[28px] sm:p-[40px] md:p-[48px]">
+          <AuditBookingFlow client:load />
+        </div>
+
+        <!-- Trust badges below form -->
+        <div class="hero-animate-delay-2 flex flex-col sm:flex-row items-center justify-center gap-[8px] sm:gap-[24px] mt-[32px] text-[13px] text-text-muted">
+          <span class="flex items-center gap-[6px]">
+            <svg class="size-[14px] text-accent-strong" fill="none" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M1 5l3 3 5-6" />
+            </svg>
+            No obligation
+          </span>
+          <span class="hidden sm:block text-border-subtle">|</span>
+          <span class="flex items-center gap-[6px]">
+            <svg class="size-[14px] text-accent-strong" fill="none" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M1 5l3 3 5-6" />
+            </svg>
+            20-minute call
+          </span>
+          <span class="hidden sm:block text-border-subtle">|</span>
+          <span class="flex items-center gap-[6px]">
+            <svg class="size-[14px] text-accent-strong" fill="none" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M1 5l3 3 5-6" />
+            </svg>
+            Clear next steps
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ section -->
+    <section class="animate-on-scroll animate-fade-up relative w-full bg-bg-muted/30 py-[60px] sm:py-[80px] md:py-[100px]">
+      <div class="mx-auto max-w-[640px] px-[24px] sm:px-[32px] w-full">
+        <div class="flex flex-col items-center gap-[40px] md:gap-[48px]">
+          <h2 class="font-medium text-[24px] sm:text-[28px] leading-[1.2] text-text-primary tracking-[-0.5px] text-center">
+            {faq.title}
+          </h2>
+
+          <div class="flex flex-col w-full gap-[12px]">
+            {faq.items.map((item, i) => (
+              <details
+                class="group bg-white border border-border-subtle rounded-xl overflow-hidden"
+                open={i === 0}
+              >
+                <summary class="flex justify-between items-center gap-[16px] cursor-pointer list-none select-none px-[20px] sm:px-[24px] py-[18px] sm:py-[20px]">
+                  <h3 class="font-medium text-[15px] text-text-primary leading-[1.4]">
+                    {item.question}
+                  </h3>
+                  <div class="size-[20px] shrink-0 transition-transform duration-200 group-open:rotate-180 flex items-center justify-center text-text-muted">
+                    <svg class="size-[16px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </div>
+                </summary>
+                <div class="px-[20px] sm:px-[24px] pb-[18px] sm:pb-[20px] text-[14px] sm:text-[15px] text-text-secondary leading-[1.6]">
+                  <p>{item.answer}</p>
+                </div>
+              </details>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</BaseLayout>
+
+<style>
+  summary::-webkit-details-marker {
+    display: none;
+  }
+  summary {
+    display: flex;
+  }
+</style>

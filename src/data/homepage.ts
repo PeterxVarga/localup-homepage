@@ -26,7 +26,7 @@ export const heroContent = {
   title: 'Get found locally.\nGet chosen more often.',
   description:
     'LocalUp improves your website, reviews, and local visibility\nso nearby customers can easily find and book your services.',
-  primaryCta: { label: 'Get your free local audit', href: '#audit' },
+  primaryCta: { label: 'Get your free local audit', href: '/audit?cta_location=hero' },
   secondaryCta: { label: 'See how it works', href: '#how-it-works' },
   ratingLabel: '4.8 average rating',
 };
@@ -119,7 +119,7 @@ export const servicesContent = {
     heading: 'Not sure what your business needs first?',
     description:
       'Get a free local audit and we\'ll show you the clearest opportunities across your website, Google presence, reviews, and enquiry path.',
-    cta: { label: 'Get your free local audit', href: '#audit' },
+    cta: { label: 'Get your free local audit', href: '/audit?cta_location=services' },
   },
 };
 
@@ -210,7 +210,7 @@ export const pricingContent = {
         'Basic review strategy',
         'Local business listings cleanup',
       ],
-      cta: { label: 'Starts with a free audit', href: '#audit' },
+      cta: { label: 'Starts with a free audit', href: '/audit?cta_location=pricing' },
       footnote: 'Perfect for businesses getting started with local growth.',
     },
     {
@@ -227,7 +227,7 @@ export const pricingContent = {
         'Monthly performance reporting',
         'Priority email & chat support',
       ],
-      cta: { label: 'Custom quote', href: '#audit' },
+      cta: { label: 'Custom quote', href: '/audit?cta_location=pricing' },
       footnote: 'Our most popular plan for businesses ready to grow consistently.',
     },
     {
@@ -244,7 +244,7 @@ export const pricingContent = {
         'Quarterly strategy reviews',
         'Priority implementation support',
       ],
-      cta: { label: 'Custom quote', href: '#audit' },
+      cta: { label: 'Custom quote', href: '/audit?cta_location=pricing' },
       footnote: 'Built for businesses ready to lead their market.',
     },
   ],
@@ -252,7 +252,7 @@ export const pricingContent = {
     heading: 'Not sure where to start?',
     description:
       "Begin with a free local audit. We'll review your presence and recommend the best path forward.",
-    cta: { label: 'Get your free audit', href: '#audit' },
+    cta: { label: 'Get your free audit', href: '/audit?cta_location=pricing' },
   },
 };
 
@@ -299,7 +299,7 @@ export const faqContent = {
     description:
       "We'll review your local presence, highlight opportunities, and share clear next steps—no obligation.",
     checkItems: ['No commitment', 'Clear actionable insights', 'Personal recommendations'],
-    cta: { label: 'Get your free audit →', href: '#audit' },
+    cta: { label: 'Get your free audit →', href: '/audit?cta_location=faq' },
   },
 };
 
@@ -309,7 +309,7 @@ export const finalCtaContent = {
   title: 'A clearer local\ngrowth plan starts here.',
   description:
     "Begin with a free audit and we'll show you the most important\nopportunities for getting found, trusted, and contacted.",
-  primaryCta: { label: 'Get your free local audit', href: '#audit-form' },
+  primaryCta: { label: 'Get your free local audit', href: '/audit?cta_location=final_cta' },
   secondaryCta: { label: 'Talk it through in 20 min', href: '#schedule' },
   trustBadges: ['No obligation', 'Clear next steps', 'Tailored recommendations'],
 };
@@ -340,14 +340,14 @@ export const footerContent = {
         { label: 'About Us', href: '#about' },
         { label: 'Our Method', href: '#method' },
         { label: 'Case Studies', href: '#cases' },
-        { label: 'Contact Sales', href: '#audit' },
+        { label: 'Contact Sales', href: '/audit?cta_location=footer' },
       ],
     },
     {
       label: 'Resources',
       links: [
         { label: 'Local Growth Blog', href: '#blog' },
-        { label: 'Free Audit', href: '#audit' },
+        { label: 'Free Audit', href: '/audit?cta_location=footer' },
         { label: 'SEO Checklist', href: '#checklist' },
         { label: 'Community', href: '#community' },
       ],

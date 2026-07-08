@@ -3,7 +3,7 @@ import Button from '../ui/Button.astro';
 import { navLinks } from '../../data/homepage';
 ---
 
-<header class="w-full bg-bg-page border-b border-transparent py-[14px] md:py-[18px] sticky top-0 z-50 backdrop-blur-sm transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]">
+<header class="nav-animate w-full bg-bg-page border-b border-transparent py-[14px] md:py-[18px] sticky top-0 z-50 backdrop-blur-sm transition-all duration-500 ease-[cubic-bezier(0.25,1,0.5,1)]">
   <div class="mx-auto max-w-[1360px] px-[24px] sm:px-[32px] md:px-[40px] w-full flex items-center justify-between">
     <a href="/" class="text-[26px] font-medium tracking-[-0.5px] text-text-primary hover:opacity-90 transition-opacity">
       LocalUp
@@ -23,7 +23,7 @@ import { navLinks } from '../../data/homepage';
 
     <!-- Desktop CTA -->
     <Button
-      href="#audit"
+      href="/audit?cta_location=nav"
       variant="primary"
       class="hidden md:inline-flex whitespace-nowrap !py-[14px] !px-[22px]"
     >
@@ -59,7 +59,7 @@ import { navLinks } from '../../data/homepage';
       ))}
     </nav>
     <Button
-      href="#audit"
+      href="/audit?cta_location=nav"
       variant="primary"
       class="mt-[20px] w-full !py-[14px] !px-[22px]"
     >
@@ -72,6 +72,16 @@ import { navLinks } from '../../data/homepage';
   const btn = document.getElementById('mobile-menu-btn') as HTMLButtonElement | null;
   const menu = document.getElementById('mobile-menu');
   const header = document.querySelector('header') as HTMLElement | null;
+
+  // Remove entrance animation class once it finishes, so the transform
+  // is freed up for the sticky scroll behavior (hide/show on scroll).
+  if (header) {
+    header.addEventListener('animationend', (e) => {
+      if (e.animationName === 'nav-slide-down') {
+        header.classList.remove('nav-animate');
+      }
+    });
+  }
 
   // Mobile menu toggle
   if (btn && menu) {

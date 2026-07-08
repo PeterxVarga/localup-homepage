@@ -17,6 +17,10 @@ pnpm-debug.log*
 .env
 .env.production
 
+# Pi agent environment
+.agents/
+skills-lock.json
+
 # macOS-specific files
 .DS_Store
 

@@ -25,15 +25,15 @@ const { description } = heroContent;
       w-full lg:w-1/2 lg:max-w-[calc(1280px/2+40px)]
       lg:ml-auto
     ">
-      <EyebrowPill text="Local growth partner for service businesses" class="mb-[32px]">
+      <EyebrowPill text="Local growth partner for service businesses" class="mb-[32px] hero-animate">
         <img src="/assets/icons/chart-line.svg" alt="" width="17" height="17" class="size-[17px]" />
       </EyebrowPill>
 
-      <h1 class="font-medium text-[36px] sm:text-[48px] md:text-[52px] lg:text-[58px] leading-[1.1] text-text-primary tracking-[-2px] md:tracking-[-3px] lg:tracking-[-3.5px] mb-[16px]">
+      <h1 class="hero-animate-delay-1 font-medium text-[36px] sm:text-[48px] md:text-[52px] lg:text-[58px] leading-[1.1] text-text-primary tracking-[-2px] md:tracking-[-3px] lg:tracking-[-3.5px] mb-[16px]">
         Get found locally.<br/>Get chosen more often.
       </h1>
 
-      <p class="font-normal text-[18px] sm:text-[20px] leading-[1.6] text-text-secondary tracking-[-0.5px] mb-[40px] max-w-[760px]">
+      <p class="hero-animate-delay-2 font-normal text-[18px] sm:text-[20px] leading-[1.6] text-text-secondary tracking-[-0.5px] mb-[40px] max-w-[760px]">
         {description.split('\n').map((line, i) => (
           <>
             {line}
@@ -42,8 +42,8 @@ const { description } = heroContent;
         ))}
       </p>
 
-      <div class="flex flex-col sm:flex-row gap-[16px] w-full sm:w-auto mb-[40px]">
-        <Button variant="primary" href="#audit" class="w-full sm:w-auto">
+      <div class="hero-animate-delay-3 flex flex-col sm:flex-row gap-[16px] w-full sm:w-auto mb-[40px]">
+        <Button variant="primary" href="/audit?cta_location=hero" class="w-full sm:w-auto">
           Get your free local audit
         </Button>
         <Button variant="secondary" href="#how-it-works" class="w-full sm:w-auto">
@@ -52,7 +52,7 @@ const { description } = heroContent;
       </div>
 
       <!-- Social Rating -->
-      <div class="flex gap-[16px] items-center">
+      <div class="hero-animate-delay-4 flex gap-[16px] items-center">
         <div class="flex items-center">
           <div class="size-[36px] rounded-full border-[1.5px] border-bg-card-warm overflow-hidden z-30">
             <img src="/assets/images/avatar-1.png" alt="Local business customer" width="36" height="36" class="w-full h-full object-cover" />
@@ -81,6 +81,7 @@ const { description } = heroContent;
 
     <!-- Right Visual Column — bleeds to the viewport right edge -->
     <div class="
+      hero-visual-reveal
       w-full lg:w-1/2
       mt-[40px] lg:mt-0
       pl-[24px] sm:pl-[32px] lg:pl-[40px]

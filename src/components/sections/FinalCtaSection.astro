@@ -9,13 +9,13 @@ const { eyebrow, title, description, primaryCta, secondaryCta, trustBadges } = f
 
 <Section variant="transparent" padding="lg" class="overflow-x-clip" id="audit">
   <Container>
-    <div class="bg-bg-dark border border-white/5 rounded-[32px] p-[32px] sm:p-[60px] lg:p-[80px] min-h-[600px] flex items-center relative overflow-clip w-full shadow-hero">
+    <div class="animate-on-scroll animate-scale-in bg-bg-dark border border-white/5 rounded-[32px] p-[32px] sm:p-[60px] lg:p-[80px] min-h-[600px] flex items-center relative overflow-clip w-full shadow-hero">
       
       <!-- Left Content Column -->
       <div class="flex flex-col gap-[40px] items-start relative z-10 w-full lg:max-w-[620px]">
         
         <!-- Text Group -->
-        <div class="flex flex-col gap-[24px] items-start w-full">
+        <div class="animate-on-scroll animate-fade-up animate-delay-1 flex flex-col gap-[24px] items-start w-full">
           <!-- Eyebrow Tag -->
           <div class="bg-accent-soft px-[16px] py-[8px] rounded-[12px] flex gap-[8px] items-center text-bg-dark select-none">
             <img src="/assets/icons/rocket.svg" alt="" width="14" height="14" class="size-[14px]" />
@@ -46,7 +46,7 @@ const { eyebrow, title, description, primaryCta, secondaryCta, trustBadges } = f
         </div>
 
         <!-- Action Buttons -->
-        <div class="flex flex-col sm:flex-row gap-[16px] w-full sm:w-auto">
+        <div class="animate-on-scroll animate-fade-up animate-delay-2 flex flex-col sm:flex-row gap-[16px] w-full sm:w-auto">
           <Button variant="accent-primary" href={primaryCta.href} class="w-full sm:w-auto">
             <span>{primaryCta.label}</span>
             <img src="/assets/icons/arrow-right.svg" alt="" width="16" height="16" class="size-[16px] shrink-0" />
@@ -54,13 +54,15 @@ const { eyebrow, title, description, primaryCta, secondaryCta, trustBadges } = f
         </div>
 
         <!-- Trust Badges Row -->
-        <div class="flex flex-col sm:flex-row gap-y-[12px] sm:gap-x-[32px] items-start sm:items-center w-full mt-[8px]">
+        <div class="animate-on-scroll animate-fade-up animate-delay-3 flex flex-col sm:flex-row gap-y-[12px] sm:gap-x-[32px] items-start sm:items-center w-full mt-[8px]">
           {trustBadges.map((badge, index) => (
             <>
               {index > 0 && <div class="hidden sm:block h-[24px] w-px bg-white/20"></div>}
               <div class="flex gap-[12px] items-center">
-                <div class="bg-white/10 border border-accent-soft flex items-center justify-center rounded-[8px] shrink-0 size-[20px]">
-                  <img src="/assets/icons/check-yellow.svg" alt="" width="10" height="10" class="size-[10px]" />
+                <div class="bg-bg-icon-dark border border-accent-strong flex items-center justify-center rounded-md shrink-0 size-[18px]">
+                  <svg class="size-[10px]" fill="none" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.5" color="var(--color-accent-strong)">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M1 5l3 3 5-6" />
+                  </svg>
                 </div>
                 <span class="text-[14px] font-medium text-white whitespace-nowrap">{badge}</span>
               </div>

@@ -64,17 +64,19 @@ const services = [
 <Section variant="transparent" padding="lg" id="how-it-works">
   <Container>
     <!-- Section Header -->
-    <SectionHeader
-      eyebrow="SERVICES INCLUDED"
-      eyebrowIcon={eyebrowIconSvg}
-      title="The key local growth services, brought together in one package."
-      description="LocalUp bundles every essential local growth service into one connected package so nothing gets missed and you see real results."
-      align="center"
-    />
+    <div class="animate-on-scroll animate-fade-up">
+      <SectionHeader
+        eyebrow="SERVICES INCLUDED"
+        eyebrowIcon={eyebrowIconSvg}
+        title="The key local growth services, brought together in one package."
+        description="LocalUp bundles every essential local growth service into one connected package so nothing gets missed and you see real results."
+        align="center"
+      />
+    </div>
 
     <div class="flex flex-col gap-[60px] mt-[60px] w-full">
       <!-- Main Content Grid Wrapper -->
-      <div class="bg-white border border-border-subtle p-[24px] rounded-[24px] shadow-hero flex flex-col lg:flex-row gap-[24px] items-stretch">
+      <div class="animate-on-scroll animate-fade-up animate-delay-1 bg-white border border-border-subtle p-[24px] rounded-[24px] shadow-hero flex flex-col lg:flex-row gap-[24px] items-stretch">
         
         <!-- Left Accent Card (Dark) -->
         <Card variant="dark" class="w-full lg:w-[420px] p-[40px] rounded-[20px] flex flex-col justify-between relative overflow-clip shrink-0 min-h-[526px] lg:min-h-[auto]">
@@ -126,7 +128,7 @@ const services = [
       </div>
 
       <!-- Bottom CTA Card (Lavender) -->
-      <div class="bg-[#ede7fd] border border-border-subtle flex flex-col md:flex-row gap-[24px] items-center p-[24px] rounded-[24px] w-full justify-between shadow-card">
+      <div class="animate-on-scroll animate-fade-up animate-delay-2 bg-[#ede7fd] border border-border-subtle flex flex-col md:flex-row gap-[24px] items-center p-[24px] rounded-[24px] w-full justify-between shadow-card">
         <div class="flex gap-[20px] items-center w-full md:w-auto">
           <!-- Icon container -->
           <div class="bg-[#f0f2e8] flex items-center justify-center rounded-[24px] shrink-0 size-[56px] text-bg-dark">
@@ -143,7 +145,7 @@ const services = [
           </div>
         </div>
 
-        <Button variant="white" href="#audit" class="w-full md:w-auto">
+        <Button variant="white" href="/audit?cta_location=services" class="w-full md:w-auto">
           Get your free local audit <span class="ml-1 text-[16px]">&gt;</span>
         </Button>
       </div>
