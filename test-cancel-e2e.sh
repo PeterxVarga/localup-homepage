@@ -45,14 +45,23 @@ BOOKING_RES=$(curl -s -X POST http://localhost:4321/api/audit/book \
   }")
 echo "$BOOKING_RES"
 
-TOKEN=$(echo "$BOOKING_RES" | python3 -c "import sys,json; print(json.load(sys.stdin).get('managementToken',''))")
 BOOKING_ID=$(echo "$BOOKING_RES" | python3 -c "import sys,json; print(json.load(sys.stdin).get('bookingId',''))")
 
-if [ -z "$TOKEN" ]; then
-  echo "❌ No management token returned"
+if [ -z "$BOOKING_ID" ]; then
+  echo "❌ No booking ID returned"
   exit 1
 fi
 echo "✅ Booking created: $BOOKING_ID"
+
+echo ""
+echo "=== 1b. Decrypt management token from Supabase ==="
+TOKEN=$(npx tsx get-test-token.ts "$BOOKING_ID")
+echo "Token retrieved"
+
+if [ -z "$TOKEN" ]; then
+  echo "❌ No management token found"
+  exit 1
+fi
 
 echo ""
 echo "=== 2. GET /api/audit/manage/[token] ==="

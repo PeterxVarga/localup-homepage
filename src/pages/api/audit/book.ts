@@ -220,7 +220,6 @@ export const POST: APIRoute = async ({ request }) => {
       status: finalStatus,
       bookingId,
       meetLink: syncOutcome.meetLink,
-      manageToken: managementToken,
     }),
   ]).catch((err) => console.error('Email send error:', err));
 
@@ -240,7 +239,6 @@ export const POST: APIRoute = async ({ request }) => {
     {
       success: true,
       bookingId,
-      managementToken,
       slotStart: input.slotStart,
       slotEnd: input.slotEnd,
       status: finalStatus,
