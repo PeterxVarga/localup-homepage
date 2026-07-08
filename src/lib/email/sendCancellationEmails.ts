@@ -1,9 +1,9 @@
 // ============================================================
-// Cancellation emails
+// Cancellation emails (Hungarian)
 // ============================================================
 
 import { getResend, isConfigured } from './client';
-import { env } from '../env';
+import { env, siteUrl } from '../env';
 
 interface CancellationParams {
   bookingId: string;
@@ -20,7 +20,6 @@ function formatSlot(start: string, end: string): string {
   const startDate = new Date(start);
   const endDate = new Date(end);
   const dateStr = startDate.toLocaleDateString('hu-HU', {
-    weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
@@ -36,6 +35,20 @@ function formatSlot(start: string, end: string): string {
   return `${dateStr}, ${startTime}–${endTime}`;
 }
 
+function formatCancelledAt(): string {
+  return new Date().toLocaleString('hu-HU', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/**
+ * Send a short confirmation to the customer that the cancellation succeeded.
+ * No manage link — only a CTA to book a new slot.
+ */
 export async function sendUserCancellationEmail(
   params: CancellationParams,
 ): Promise<void> {
@@ -45,29 +58,26 @@ export async function sendUserCancellationEmail(
   }
 
   const slotText = formatSlot(params.slotStart, params.slotEnd);
+  const bookNewUrl = `${siteUrl()}/audit`;
 
   try {
     await getResend().emails.send({
       from: env.emailFrom,
       replyTo: env.emailReplyTo,
       to: params.email,
-      subject: 'Your LocalUp audit call has been cancelled',
+      subject: 'Az időpontodat sikeresen lemondtuk',
       text: [
-        `Hi ${params.name},`,
+        `Szia ${params.name}!`,
         '',
-        `Your LocalUp audit call for ${params.businessName} has been cancelled.`,
+        'Az időpontodat sikeresen lemondtuk.',
         '',
-        'Cancelled slot:',
-        `  ${slotText}`,
-        params.reason ? `\nReason: ${params.reason}` : '',
+        `Foglalás: LocalUp audit`,
+        `Időpont: ${slotText}`,
         '',
-        params.calendarDeleted
-          ? 'The calendar event has been removed.'
-          : 'We are removing the calendar event; if it still appears, it will be handled manually.',
+        'Ha új időpontot szeretnél, foglalj itt:',
+        `  ${bookNewUrl}`,
         '',
-        'If you change your mind, reply to this email and we will find a new time.',
-        '',
-        '— The LocalUp team',
+        '— LocalUp csapat',
       ].join('\n'),
     });
   } catch (err) {
@@ -75,6 +85,10 @@ export async function sendUserCancellationEmail(
   }
 }
 
+/**
+ * Send detailed cancellation notification to the admin.
+ * Highlights manual action if the calendar event could not be deleted.
+ */
 export async function sendAdminCancellationEmail(
   params: CancellationParams,
 ): Promise<void> {
@@ -84,24 +98,36 @@ export async function sendAdminCancellationEmail(
   }
 
   const slotText = formatSlot(params.slotStart, params.slotEnd);
+  const cancelledAt = formatCancelledAt();
+  const needsManualAction = !params.calendarDeleted;
+
+  const subject = needsManualAction
+    ? `⚠️ Manual action required: calendar event deletion failed — ${params.businessName}`
+    : `Foglalás lemondva — ${params.businessName}`;
 
   try {
     await getResend().emails.send({
       from: env.emailFrom,
       replyTo: env.emailReplyTo,
       to: env.adminEmail,
-      subject: `Audit cancelled — ${params.businessName}`,
+      subject,
       text: [
-        `A booking has been cancelled.`,
+        needsManualAction
+          ? '⚠️ MANUAL ACTION REQUIRED: a booking was cancelled but the Google Calendar event could not be deleted.'
+          : 'Egy foglalás le lett mondva.',
+        '',
+        `Ügyfél: ${params.name}`,
+        `Email: ${params.email}`,
+        `Vállalkozás: ${params.businessName}`,
+        '',
+        `Eredeti időpont: ${slotText}`,
+        `Lemondás ideje: ${cancelledAt}`,
+        params.reason ? `Lemondás oka: ${params.reason}` : 'Lemondás oka: nincs megadva',
+        '',
+        `Google Calendar esemény törölve: ${params.calendarDeleted ? 'Igen' : 'Nem — kérlek töröld kézzel'}`,
+        `Slot felszabadult: Igen`,
         '',
         `Booking ID: ${params.bookingId}`,
-        `Business: ${params.businessName}`,
-        `Name: ${params.name}`,
-        `Email: ${params.email}`,
-        `Cancelled slot: ${slotText}`,
-        params.reason ? `Reason: ${params.reason}` : '',
-        '',
-        `Calendar event removed: ${params.calendarDeleted ? 'Yes' : 'No — manual cleanup needed'}`,
         '',
         '— LocalUp booking system',
       ].join('\n'),
@@ -110,4 +136,3 @@ export async function sendAdminCancellationEmail(
     console.error('Admin cancellation email failed:', err);
   }
 }
-
