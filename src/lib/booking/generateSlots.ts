@@ -96,7 +96,7 @@ export async function generateAvailableSlots(
   const { data: bookedSlots } = await getSupabase()
     .from('audit_bookings')
     .select('selected_slot_start, selected_slot_end')
-    .in('status', ['calendar_pending', 'booked', 'calendar_failed'])
+    .in('booking_status', ['pending', 'booked'])
     .gte('selected_slot_start', minTime.toISOString())
     .lte('selected_slot_start', maxTime.toISOString());
 

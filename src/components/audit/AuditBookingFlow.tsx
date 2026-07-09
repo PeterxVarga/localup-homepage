@@ -17,7 +17,8 @@ interface ConfirmationData {
   slotStart: string;
   slotEnd: string;
   email: string;
-  status: string;
+  bookingStatus: 'pending' | 'booked' | 'cancelled';
+  calendarSyncStatus: 'pending' | 'synced' | 'failed';
 }
 
 const steps = [
@@ -164,7 +165,8 @@ export default function AuditBookingFlow() {
             slotStart: timeData.slotStart,
             slotEnd: timeData.slotEnd,
             email: timeData.email,
-            status: result.status || 'booked',
+            bookingStatus: result.bookingStatus || 'booked',
+            calendarSyncStatus: result.calendarSyncStatus || 'synced',
           });
           setStep('confirmation');
         } else {

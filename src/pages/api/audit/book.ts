@@ -162,8 +162,6 @@ export const POST: APIRoute = async ({ request }) => {
     syncOutcome.meetLink,
   );
 
-  const finalStatus = calendarSyncStatus === 'synced' ? 'booked' : 'calendar_failed';
-
   // 4. Send emails
   const goalLabels = input.goals.map((g) => {
     const labels: Record<string, string> = {
@@ -200,7 +198,8 @@ export const POST: APIRoute = async ({ request }) => {
       slotStart: input.slotStart,
       slotEnd: input.slotEnd,
       ctaLocation: input.ctaLocation,
-      status: finalStatus,
+      bookingStatus: 'booked',
+      calendarSyncStatus,
       bookingId,
       meetLink: syncOutcome.meetLink,
     }),
@@ -215,7 +214,7 @@ export const POST: APIRoute = async ({ request }) => {
         : 'audit_booking_confirmed',
     sessionId,
     bookingId,
-    metadata: { status: finalStatus, goals: input.goals },
+    metadata: { bookingStatus: 'booked', calendarSyncStatus, goals: input.goals },
   });
 
   return jsonResponse(
@@ -224,7 +223,8 @@ export const POST: APIRoute = async ({ request }) => {
       bookingId,
       slotStart: input.slotStart,
       slotEnd: input.slotEnd,
-      status: finalStatus,
+      bookingStatus: 'booked',
+      calendarSyncStatus,
     },
     200,
   );

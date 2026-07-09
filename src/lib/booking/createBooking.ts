@@ -10,6 +10,7 @@ import {
   hashManagementToken,
   encryptManagementToken,
 } from '../tokens/crypto';
+import { toLegacyStatus } from './legacyStatusMapper';
 
 export interface CreateBookingResult {
   success: true;
@@ -23,19 +24,6 @@ export interface CreateBookingError {
   success: false;
   error: string;
   message: string;
-}
-
-function calendarSyncStatusFromOldStatus(
-  status: 'calendar_pending' | 'booked' | 'calendar_failed',
-): 'pending' | 'synced' | 'failed' {
-  switch (status) {
-    case 'calendar_pending':
-      return 'pending';
-    case 'booked':
-      return 'synced';
-    case 'calendar_failed':
-      return 'failed';
-  }
 }
 
 /**
@@ -74,7 +62,9 @@ export async function createBooking(
   ).toISOString();
 
   // 3. Insert booking
-  //    Dual-write old `status` for backward compatibility during deploy transition.
+  //    The legacy `status` column is written only through the compatibility
+  //    mapper. All business logic uses booking_status and calendar_sync_status.
+  const calendarSyncStatus: 'pending' = 'pending';
   const { data: booking, error: insertError } = await getSupabase()
     .from('audit_bookings')
     .insert({
@@ -90,9 +80,9 @@ export async function createBooking(
       phone: input.phone || null,
       selected_slot_start: input.slotStart,
       selected_slot_end: input.slotEnd,
-      status: 'calendar_pending',
       booking_status: 'booked',
-      calendar_sync_status: 'pending',
+      calendar_sync_status: calendarSyncStatus,
+      status: toLegacyStatus(calendarSyncStatus),
       meet_link: null,
       management_token_hash: tokenHash,
       management_token_encrypted: tokenEncrypted,
@@ -127,7 +117,7 @@ export async function createBooking(
 
 /**
  * Update booking status after calendar provider sync attempt.
- * Dual-writes old `status` for backward compatibility.
+ * The legacy `status` column is kept in sync through the compatibility mapper.
  */
 export async function updateBookingCalendarSync(
   bookingId: string,
@@ -135,14 +125,11 @@ export async function updateBookingCalendarSync(
   googleCalendarEventId?: string,
   meetLink?: string,
 ): Promise<void> {
-  const oldStatus =
-    calendarSyncStatus === 'synced' ? 'booked' : 'calendar_failed';
-
   await getSupabase()
     .from('audit_bookings')
     .update({
       calendar_sync_status: calendarSyncStatus,
-      status: oldStatus,
+      status: toLegacyStatus(calendarSyncStatus),
       ...(meetLink ? { meet_link: meetLink } : {}),
       ...(googleCalendarEventId
         ? { google_calendar_event_id: googleCalendarEventId }
@@ -176,8 +163,4 @@ export async function getBookingByTokenHash(tokenHash: string) {
   return data;
 }
 
-/**
- * Convenience: map an old-style status to the new calendar_sync_status.
- * Remove once the old `status` column is dropped.
- */
-export { calendarSyncStatusFromOldStatus };
+

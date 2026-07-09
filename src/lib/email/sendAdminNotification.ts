@@ -20,9 +20,29 @@ interface AdminNotificationParams {
   slotStart: string; // ISO 8601
   slotEnd: string; // ISO 8601
   ctaLocation?: string;
-  status: string;
+  bookingStatus: 'pending' | 'booked' | 'cancelled';
+  calendarSyncStatus: 'pending' | 'synced' | 'failed';
   bookingId?: string;
   meetLink?: string;
+}
+
+function formatAdminStatus(
+  bookingStatus: AdminNotificationParams['bookingStatus'],
+  calendarSyncStatus: AdminNotificationParams['calendarSyncStatus'],
+): string {
+  const bookingLabel =
+    bookingStatus === 'cancelled'
+      ? 'Cancelled'
+      : bookingStatus === 'booked'
+        ? 'Booked'
+        : 'Pending';
+  const syncLabel =
+    calendarSyncStatus === 'synced'
+      ? 'Calendar synced'
+      : calendarSyncStatus === 'failed'
+        ? 'Calendar failed'
+        : 'Calendar pending';
+  return `${bookingLabel} / ${syncLabel}`;
 }
 
 function formatSlot(start: string, end: string): string {
@@ -58,6 +78,7 @@ export async function sendAdminNotification(
   const goalsText = params.goals.map((g) => `• ${g}`).join('\n');
   const bookingIdShort = params.bookingId ? params.bookingId.slice(0, 8) : '';
   const slotText = formatSlot(params.slotStart, params.slotEnd);
+  const statusText = formatAdminStatus(params.bookingStatus, params.calendarSyncStatus);
 
   try {
     await getResend().emails.send({
@@ -66,7 +87,7 @@ export async function sendAdminNotification(
       to: env.adminEmail,
       subject: `New LocalUp audit booking — ${params.businessName}`,
       text: [
-        `Status: ${params.status}`,
+        `Status: ${statusText}`,
         params.bookingId ? `Booking ID: ${params.bookingId}` : '',
         '',
         '— Contact —',

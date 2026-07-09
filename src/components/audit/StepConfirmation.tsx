@@ -8,7 +8,8 @@ interface ConfirmationData {
   slotStart: string;
   slotEnd: string;
   email: string;
-  status: string;
+  bookingStatus: 'pending' | 'booked' | 'cancelled';
+  calendarSyncStatus: 'pending' | 'synced' | 'failed';
 }
 
 interface Props {
@@ -85,7 +86,7 @@ export default function StepConfirmation({ data }: Props) {
             <DetailRow label="Email" value={data.email} />
           </div>
 
-          {data.status === 'calendar_failed' && (
+          {data.calendarSyncStatus === 'failed' && (
             <p class="text-[13px] text-amber-600 leading-snug mt-[2px]">
               Booking confirmed — calendar sync pending. We'll reach out to confirm.
             </p>
