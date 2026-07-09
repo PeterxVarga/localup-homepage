@@ -10,7 +10,6 @@ import { hashManagementToken, decryptManagementToken } from '../tokens/crypto';
 import { googleCalendarProvider } from '../calendar/provider/google';
 import { isSlotAvailable } from '../calendar/syncBookingToCalendar';
 import { trackEvent } from './trackEvent';
-import { toLegacyStatus } from './legacyStatusMapper';
 import {
   isSlotValidAccordingToRules,
   getExpectedSlotEnd,
@@ -245,7 +244,6 @@ export async function rescheduleBooking(
       selected_slot_start: newSlotStart,
       selected_slot_end: newSlotEnd,
       calendar_sync_status: 'pending',
-      status: toLegacyStatus('pending'),
       rescheduled_at: now.toISOString(),
       reschedule_count: booking.reschedule_count + 1,
       management_token_expires_at: newTokenExpiry,
@@ -300,7 +298,6 @@ export async function rescheduleBooking(
         selected_slot_start: oldSlotStart,
         selected_slot_end: oldSlotEnd,
         calendar_sync_status: 'synced',
-        status: toLegacyStatus('synced'),
         rescheduled_at: null,
         reschedule_count: booking.reschedule_count,
         management_token_expires_at: oldTokenExpiry,
@@ -379,7 +376,6 @@ export async function rescheduleBooking(
         selected_slot_start: oldSlotStart,
         selected_slot_end: oldSlotEnd,
         calendar_sync_status: 'synced',
-        status: toLegacyStatus('synced'),
         rescheduled_at: null,
         reschedule_count: booking.reschedule_count,
         management_token_expires_at: oldTokenExpiry,
@@ -412,7 +408,6 @@ export async function rescheduleBooking(
   // If we are here, either patch succeeded or state is unverified/rollback failed
   const dbUpdate: Record<string, unknown> = {
     calendar_sync_status: finalCalendarStatus,
-    status: toLegacyStatus(finalCalendarStatus),
     updated_at: new Date().toISOString(),
   };
 

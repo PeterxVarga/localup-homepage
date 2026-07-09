@@ -10,7 +10,6 @@ import {
   hashManagementToken,
   encryptManagementToken,
 } from '../tokens/crypto';
-import { toLegacyStatus } from './legacyStatusMapper';
 
 export interface CreateBookingResult {
   success: true;
@@ -62,9 +61,8 @@ export async function createBooking(
   ).toISOString();
 
   // 3. Insert booking
-  //    The legacy `status` column is written only through the compatibility
-  //    mapper. All business logic uses booking_status and calendar_sync_status.
-  const calendarSyncStatus: 'pending' = 'pending';
+  //    Business logic uses only booking_status and calendar_sync_status.
+  //    The legacy `status` column is kept in sync by the DB bridge trigger.
   const { data: booking, error: insertError } = await getSupabase()
     .from('audit_bookings')
     .insert({
@@ -81,8 +79,7 @@ export async function createBooking(
       selected_slot_start: input.slotStart,
       selected_slot_end: input.slotEnd,
       booking_status: 'booked',
-      calendar_sync_status: calendarSyncStatus,
-      status: toLegacyStatus(calendarSyncStatus),
+      calendar_sync_status: 'pending',
       meet_link: null,
       management_token_hash: tokenHash,
       management_token_encrypted: tokenEncrypted,
@@ -117,7 +114,7 @@ export async function createBooking(
 
 /**
  * Update booking status after calendar provider sync attempt.
- * The legacy `status` column is kept in sync through the compatibility mapper.
+ * The legacy `status` column is kept in sync by the DB bridge trigger.
  */
 export async function updateBookingCalendarSync(
   bookingId: string,
@@ -129,7 +126,6 @@ export async function updateBookingCalendarSync(
     .from('audit_bookings')
     .update({
       calendar_sync_status: calendarSyncStatus,
-      status: toLegacyStatus(calendarSyncStatus),
       ...(meetLink ? { meet_link: meetLink } : {}),
       ...(googleCalendarEventId
         ? { google_calendar_event_id: googleCalendarEventId }
