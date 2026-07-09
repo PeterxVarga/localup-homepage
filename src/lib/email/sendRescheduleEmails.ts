@@ -5,6 +5,8 @@
 import { getResend, isConfigured } from './client';
 import { env, siteUrl } from '../env';
 
+const DISPLAY_TIMEZONE = 'Europe/Budapest';
+
 interface RescheduleEmailParams {
   bookingId: string;
   businessName: string;
@@ -33,15 +35,18 @@ function formatSlot(start: string, end: string): string {
   const startDate = new Date(start);
   const endDate = new Date(end);
   const dateStr = startDate.toLocaleDateString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
   const startTime = startDate.toLocaleTimeString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
   });
   const endTime = endDate.toLocaleTimeString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
   });

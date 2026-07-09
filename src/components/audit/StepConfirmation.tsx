@@ -23,22 +23,26 @@ const goalLabels: Record<string, string> = {
   not_sure: 'Not sure yet',
 };
 
+const DISPLAY_TIMEZONE = 'Europe/Budapest';
+
 export default function StepConfirmation({ data }: Props) {
   const slotDate = new Date(data.slotStart);
-  const dateStr = slotDate.toLocaleDateString('en-US', {
+  const dateStr = slotDate.toLocaleDateString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
     weekday: 'long',
     month: 'long',
     day: 'numeric',
   });
-  const timeStr = slotDate.toLocaleTimeString('en-US', {
-    hour: 'numeric',
+  const timeStr = slotDate.toLocaleTimeString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
+    hour: '2-digit',
     minute: '2-digit',
   });
   const endDate = new Date(data.slotEnd);
-  const endTimeStr = endDate.toLocaleTimeString('en-US', {
-    hour: 'numeric',
+  const endTimeStr = endDate.toLocaleTimeString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
+    hour: '2-digit',
     minute: '2-digit',
-    timeZoneName: 'short',
   });
 
   const goalList = data.goals.map((g) => goalLabels[g] || g);

@@ -5,6 +5,8 @@
 import { getResend, isConfigured } from './client';
 import { env } from '../env';
 
+const DISPLAY_TIMEZONE = 'Europe/Budapest';
+
 interface AdminNotificationParams {
   businessName: string;
   name: string;
@@ -15,12 +17,34 @@ interface AdminNotificationParams {
   businessType: string;
   goals: string[];
   notes?: string;
-  slotStart: string;
-  slotEnd: string;
+  slotStart: string; // ISO 8601
+  slotEnd: string; // ISO 8601
   ctaLocation?: string;
   status: string;
   bookingId?: string;
   meetLink?: string;
+}
+
+function formatSlot(start: string, end: string): string {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  const dateStr = startDate.toLocaleDateString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  const startTime = startDate.toLocaleTimeString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const endTime = endDate.toLocaleTimeString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return `${dateStr}, ${startTime}–${endTime}`;
 }
 
 export async function sendAdminNotification(
@@ -33,6 +57,7 @@ export async function sendAdminNotification(
 
   const goalsText = params.goals.map((g) => `• ${g}`).join('\n');
   const bookingIdShort = params.bookingId ? params.bookingId.slice(0, 8) : '';
+  const slotText = formatSlot(params.slotStart, params.slotEnd);
 
   try {
     await getResend().emails.send({
@@ -60,12 +85,9 @@ export async function sendAdminNotification(
         '',
         params.notes ? `— Notes —\n${params.notes}\n` : '',
         '— Slot —',
-        `  Start: ${params.slotStart}`,
-        `  End: ${params.slotEnd}`,
+        `  ${slotText}`,
         '',
-        params.meetLink
-          ? `— Google Meet —\n  ${params.meetLink}\n`
-          : '',
+        params.meetLink ? `— Google Meet —\n  ${params.meetLink}\n` : '',
         params.bookingId ? `— Booking —\n  ID: ${params.bookingId}\n  Short: ${bookingIdShort}\n` : '',
         params.ctaLocation
           ? `— CTA location —\n  ${params.ctaLocation}\n`

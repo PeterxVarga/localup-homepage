@@ -5,14 +5,39 @@
 import { getResend, isConfigured } from './client';
 import { env, siteUrl } from '../env';
 
+const DISPLAY_TIMEZONE = 'Europe/Budapest';
+
 interface BookingConfirmationParams {
   email: string;
   businessName: string;
-  date: string; // formatted date string
-  timeRange: string; // e.g. "10:00 AM – 10:30 AM"
+  slotStart: string; // ISO 8601
+  slotEnd: string; // ISO 8601
   goals: string[];
   meetLink?: string;
   manageToken: string;
+}
+
+function formatSlot(start: string, end: string): { date: string; timeRange: string } {
+  const startDate = new Date(start);
+  const endDate = new Date(end);
+  const dateStr = startDate.toLocaleDateString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  const startTime = startDate.toLocaleTimeString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const endTime = endDate.toLocaleTimeString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  return { date: dateStr, timeRange: `${startTime}–${endTime}` };
 }
 
 export async function sendBookingConfirmation(
@@ -23,6 +48,7 @@ export async function sendBookingConfirmation(
     return;
   }
 
+  const { date, timeRange } = formatSlot(params.slotStart, params.slotEnd);
   const goalsText = params.goals.map((g) => `• ${g}`).join('\n');
   const manageUrl = `${siteUrl()}/audit/manage/${params.manageToken}`;
 
@@ -38,8 +64,8 @@ export async function sendBookingConfirmation(
         `We'll review your website, local visibility, and trust signals before the call.`,
         '',
         'Booking details:',
-        `  Date: ${params.date}`,
-        `  Time: ${params.timeRange}`,
+        `  Date: ${date}`,
+        `  Time: ${timeRange}`,
         `  Business: ${params.businessName}`,
         '',
         'Goals selected:',

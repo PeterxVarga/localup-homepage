@@ -26,20 +26,25 @@ export interface ManageBookingClientProps {
   token: string;
 }
 
+const DISPLAY_TIMEZONE = 'Europe/Budapest';
+
 function formatSlot(start: string, end: string): string {
   const startDate = new Date(start);
   const endDate = new Date(end);
   const dateStr = startDate.toLocaleDateString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
     weekday: 'long',
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
   const startTime = startDate.toLocaleTimeString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
   });
   const endTime = endDate.toLocaleTimeString('hu-HU', {
+    timeZone: DISPLAY_TIMEZONE,
     hour: '2-digit',
     minute: '2-digit',
   });
@@ -293,6 +298,7 @@ export default function ManageBookingClient({
                 <div class="grid grid-cols-2 sm:grid-cols-3 gap-[8px]">
                   {selectedSlots.map((slot) => {
                     const time = new Date(slot.start).toLocaleTimeString('hu-HU', {
+                      timeZone: DISPLAY_TIMEZONE,
                       hour: '2-digit',
                       minute: '2-digit',
                     });

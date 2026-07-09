@@ -165,23 +165,6 @@ export const POST: APIRoute = async ({ request }) => {
   const finalStatus = calendarSyncStatus === 'synced' ? 'booked' : 'calendar_failed';
 
   // 4. Send emails
-  const slotDate = new Date(input.slotStart);
-  const dateStr = slotDate.toLocaleDateString('en-US', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-  const timeStr = slotDate.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-  const endDate = new Date(input.slotEnd);
-  const endTimeStr = endDate.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-
   const goalLabels = input.goals.map((g) => {
     const labels: Record<string, string> = {
       more_visibility: 'More local visibility',
@@ -198,8 +181,8 @@ export const POST: APIRoute = async ({ request }) => {
     sendBookingConfirmation({
       email: input.email,
       businessName: input.businessName,
-      date: dateStr,
-      timeRange: `${timeStr} – ${endTimeStr}`,
+      slotStart: input.slotStart,
+      slotEnd: input.slotEnd,
       goals: goalLabels,
       meetLink: syncOutcome.meetLink,
       manageToken: managementToken,
