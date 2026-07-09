@@ -1,6 +1,6 @@
 # 006 Booking Status Contract Plan
 
-Two-phase removal of the legacy `status` column and the compatibility layer introduced in `005_booking_status_expand.sql`.
+Three-phase removal of the legacy `status` column and the compatibility layer introduced in `005_booking_status_expand.sql`.
 
 ## Context
 
@@ -9,13 +9,16 @@ Migration `005_booking_status_expand.sql` added the new lifecycle fields:
 - `booking_status`
 - `calendar_sync_status`
 - `management_token_hash`
+- `management_token_encrypted`
 - `management_token_expires_at`
 - `reschedule_count`
 - `cancelled_at`
 
-It kept the old `status` column and added a compatibility trigger (`audit_bookings_status_compat`) plus a helper function (`sync_audit_booking_status_compat`) so that old and new code instances could coexist during deploy.
+It kept the old `status` column and added a compatibility trigger (`audit_bookings_status_compat`) plus a helper function (`sync_audit_booking_status_compat`). The trigger originally only propagated from the legacy `status` column to the new fields, so that old code instances could coexist during deploy.
 
-The application currently writes both the new fields and the legacy `status` field (dual-write). This plan removes that technical debt in two safe phases.
+The application currently writes the legacy `status` field through an isolated mapper (`legacyStatusMapper.ts`) while all reads, queries, conditions, and business decisions use only the new fields.
+
+This plan removes the legacy column in three safe phases.
 
 ## Goal
 
@@ -23,206 +26,516 @@ End state:
 
 - Only `booking_status` and `calendar_sync_status` are used for reads, queries, conditions, and business logic.
 - The legacy `status` column, its trigger, its function, and its index are removed.
-- Legacy `status` writes are isolated in a single compatibility mapper during Phase A, then removed together with the DB contract in Phase B.
-- A clean rollback path exists at every step.
+- No dual-write in application code.
+- A clean rollback path exists at every step until the final `DROP COLUMN`.
 
-## Preconditions before starting either phase
+## Preconditions before starting Phase B1
 
-All of these must be true before Phase A begins:
+All of these must be true before Phase B1 begins:
 
-- [ ] The latest production version (`2b988bd` or later) is stable.
-- [ ] At least one new booking succeeded end-to-end in production.
-- [ ] At least one cancellation succeeded in production.
-- [ ] At least one reschedule succeeded in production.
+- [ ] The latest production version (`3706d71` or later) is stable.
+- [ ] At least one new booking succeeded end-to-end in production after the calendar-deletion fix.
+- [ ] At least one cancellation succeeded in production after the fix.
+- [ ] At least one reschedule succeeded in production after the fix.
 - [ ] No rows with `calendar_sync_status = 'failed'` remain unhandled.
 - [ ] No relevant Vercel runtime errors in the last 48 hours.
 - [ ] Resend emails are being delivered successfully.
-- [ ] At least 48 hours have passed since the last meaningful booking-flow code change.
-
-## Phase A — Application code contract preparation
-
-### Objective
-
-Move every read, query, condition, API response, email, and business decision to the new status fields, while keeping legacy `status` writes alive through a single isolated compatibility mapper. The legacy database objects stay in place. This allows a clean Vercel rollback if anything goes wrong.
-
-### Why legacy writes must stay during Phase A
-
-The legacy `status` column is still `NOT NULL`. The existing compatibility trigger propagates from the legacy `status` field to the new fields, not necessarily the other way around. If the new code stopped writing `status`, new inserts could fail with a `NOT NULL` violation.
-
-Therefore, Phase A keeps a narrow compatibility write path for `status`, but no other code may read or interpret it.
-
-### Code changes
-
-1. **Read paths**
-   - Find every place that reads `status` from `audit_bookings`.
-   - Replace with `booking_status` and/or `calendar_sync_status` as appropriate.
-
-2. **Business logic, conditions, and API responses**
-   - All conditions (`if booking.status === ...`, etc.) must use the new fields.
-   - No API response may include `status`.
-   - No email may format or decide content based on `status`.
-
-3. **Types and schemas**
-   - Update any TypeScript types, Zod schemas, or Supabase types that reference `status`.
-
-4. **Legacy status write isolation**
-   - All legacy `status` writes must move into a single dedicated compatibility mapper / write helper.
-   - The mapper maps from the new fields to the legacy values:
-     - `calendar_sync_status = 'pending'` → `status = 'calendar_pending'`
-     - `calendar_sync_status = 'synced'` → `status = 'booked'`
-     - `calendar_sync_status = 'failed'` → `status = 'calendar_failed'`
-   - Business code must not call `status` directly; it calls the mapper or lets the mapper wrap the insert/update.
-
-5. **Functions and files to audit**
-   - `src/lib/booking/createBooking.ts`
-   - `src/lib/booking/cancelBooking.ts`
-   - `src/lib/booking/rescheduleBooking.ts`
-   - `src/lib/calendar/syncBookingToCalendar.ts`
-   - `src/pages/api/audit/book.ts`
-   - `src/pages/api/audit/cancel.ts`
-   - `src/pages/api/audit/reschedule.ts`
-   - `src/pages/api/audit/manage/[token].ts`
-   - `src/components/audit/ManageBookingClient.tsx`
-   - Any utility types in `src/lib/booking/types.ts` if created.
-
-6. **Compatibility trigger behaviour during Phase A**
-   - The trigger `audit_bookings_status_compat` remains active.
-   - It keeps the new fields in sync if an old deployment writes the legacy `status` field.
-   - The new application code writes the legacy `status` field only through the compatibility mapper, so the trigger is effectively a no-op for new writes but remains a safety net for rollback scenarios.
-
-### Proposed SQL (no migration file yet)
-
-No database changes in Phase A. The legacy column, trigger, function, and index stay exactly as they are.
-
-### Audit checklist for Phase A
-
-Run these searches before declaring Phase A ready. The report must separate legacy DB `status` references from unrelated concepts like HTTP response status, UI state, or email delivery status.
-
-```bash
-rg '\bstatus\s*:' src
-rg '\.eq\(["'\''"]status' src
-rg '\.select\(.*status' src
-rg '\.update\(.*status' src
-rg '\.insert\(.*status' src
-rg 'calendar_pending|calendar_failed' src
-```
-
-Allowed legacy references at the end of Phase A:
-
-- The dedicated compatibility mapper file and its tests.
-- No reads, queries, conditions, API responses, or emails may reference the legacy `status`.
-
-### Deploy and validation
-
-1. Deploy the Phase A commit to production.
-2. Run production smoke tests:
-   - Create a booking.
-   - Verify `booking_status = 'booked'` and `calendar_sync_status = 'synced'`.
-   - Verify the legacy `status` column is also written (e.g., `status = 'booked'` for a synced booking).
-   - Cancel a booking.
-   - Verify `booking_status = 'cancelled'`.
-   - Reschedule a booking.
-   - Verify `reschedule_count` increments.
-3. Rollback test:
-   - Confirm that the previous production commit can still read and update records created by the new code.
-   - Verify the compatibility trigger keeps the new fields in sync when the old code writes `status`.
-4. Monitor for 24–48 hours:
-   - Vercel runtime logs.
-   - Resend delivery.
-   - `calendar_sync_status = 'failed'` rows.
-
-### Consistency SQL for Phase A validation
-
-```sql
--- New fields must never be NULL
-SELECT count(*)
-FROM public.audit_bookings
-WHERE booking_status IS NULL
-   OR calendar_sync_status IS NULL;
-
--- Expected result: 0
-
--- Distribution of new status combinations
-SELECT booking_status, calendar_sync_status, count(*)
-FROM public.audit_bookings
-GROUP BY booking_status, calendar_sync_status
-ORDER BY booking_status, calendar_sync_status;
-
--- Legacy status consistency check
-SELECT
-  status,
-  booking_status,
-  calendar_sync_status,
-  count(*)
-FROM public.audit_bookings
-GROUP BY status, booking_status, calendar_sync_status
-ORDER BY status, booking_status, calendar_sync_status;
-
--- Allowed pairs include:
--- calendar_pending | booked   | pending
--- booked           | booked   | synced
--- calendar_failed  | booked   | failed
--- (cancelled rows keep the last calendar sync legacy status)
-```
-
-### Rollback — Phase A
-
-Because the database schema is unchanged, rollback is a simple Vercel production deployment of the previous commit.
-
-If a rollback is needed, the legacy application code will resume writing `status` directly. The compatibility trigger will continue to keep `booking_status` and `calendar_sync_status` in sync, so the new fields remain valid.
+- [ ] At least 48 hours have passed since `3706d71` was deployed.
 
 ---
 
-## Phase B — Final database contract
+## Phase B1 — Bridge migration: bidirectional compatibility trigger
 
 ### Objective
 
-Remove the legacy `status` column, its trigger, its function, its constraint, and its index from the database. Also remove the application-side compatibility mapper that wrote the legacy `status`.
+Make the compatibility trigger bidirectional so that the next application version can stop writing the legacy `status` column entirely, while the column remains `NOT NULL` and stays in sync for rollback safety.
 
-### Preconditions before Phase B
+### What changes in the database
+
+- Replace the trigger function `sync_audit_booking_status_compat()` with a bidirectional version.
+- The trigger must still support:
+  - legacy `status` change → new `calendar_sync_status` (old behaviour, for rollback to pre-Phase B2 code)
+  - `calendar_sync_status` change → legacy `status` (new bridge behaviour, for forward migration)
+- Validate consistency for all allowed pairs and reject invalid input explicitly.
+- No column, index, constraint, trigger, or function is deleted yet.
+
+### Final `006a_booking_status_contract_bridge.sql`
+
+```sql
+-- ============================================================
+-- 006a_booking_status_contract_bridge.sql
+-- Makes the status compatibility trigger bidirectional.
+-- The application may stop writing the legacy `status` column.
+-- ============================================================
+
+BEGIN;
+
+-- 1. Preflight: abort if any row has missing or inconsistent status fields.
+DO $$
+DECLARE
+  missing_count int;
+  inconsistent_count int;
+BEGIN
+  SELECT count(*)
+  INTO missing_count
+  FROM public.audit_bookings
+  WHERE booking_status IS NULL
+     OR calendar_sync_status IS NULL
+     OR status IS NULL;
+
+  IF missing_count > 0 THEN
+    RAISE EXCEPTION
+      'Found % audit_bookings rows with missing status fields.',
+      missing_count;
+  END IF;
+
+  SELECT count(*)
+  INTO inconsistent_count
+  FROM public.audit_bookings
+  WHERE status IS DISTINCT FROM CASE calendar_sync_status
+    WHEN 'pending' THEN 'calendar_pending'
+    WHEN 'synced'  THEN 'booked'
+    WHEN 'failed'  THEN 'calendar_failed'
+  END;
+
+  IF inconsistent_count > 0 THEN
+    RAISE EXCEPTION
+      'Found % audit_bookings rows with inconsistent status pairs. Fix before applying bridge migration.',
+      inconsistent_count;
+  END IF;
+END $$;
+
+-- 2. Bidirectional compatibility trigger function.
+CREATE OR REPLACE FUNCTION public.sync_audit_booking_status_compat()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = pg_catalog, public
+AS $$
+DECLARE
+  status_changed boolean := false;
+  sync_changed boolean := false;
+  expected_legacy_status text;
+BEGIN
+  IF TG_OP = 'INSERT' THEN
+    -- Legacy deployment compatibility.
+    IF NEW.booking_status IS NULL THEN
+      NEW.booking_status := 'booked';
+    END IF;
+
+    IF NEW.calendar_sync_status IS NULL
+       AND NEW.status IS NULL THEN
+      RAISE EXCEPTION
+        'audit_bookings: either status or calendar_sync_status must be provided';
+    END IF;
+
+    IF NEW.calendar_sync_status IS NULL THEN
+      NEW.calendar_sync_status := CASE NEW.status
+        WHEN 'calendar_pending' THEN 'pending'
+        WHEN 'booked'           THEN 'synced'
+        WHEN 'calendar_failed'  THEN 'failed'
+        ELSE NULL
+      END;
+
+      IF NEW.calendar_sync_status IS NULL THEN
+        RAISE EXCEPTION
+          'audit_bookings: invalid legacy status: %',
+          NEW.status;
+      END IF;
+    END IF;
+
+    IF NEW.status IS NULL THEN
+      NEW.status := CASE NEW.calendar_sync_status
+        WHEN 'pending' THEN 'calendar_pending'
+        WHEN 'synced'  THEN 'booked'
+        WHEN 'failed'  THEN 'calendar_failed'
+        ELSE NULL
+      END;
+
+      IF NEW.status IS NULL THEN
+        RAISE EXCEPTION
+          'audit_bookings: invalid calendar_sync_status: %',
+          NEW.calendar_sync_status;
+      END IF;
+    END IF;
+
+  ELSIF TG_OP = 'UPDATE' THEN
+    -- Capture the original changes before mutating NEW.
+    status_changed :=
+      NEW.status IS DISTINCT FROM OLD.status;
+
+    sync_changed :=
+      NEW.calendar_sync_status
+      IS DISTINCT FROM OLD.calendar_sync_status;
+
+    -- Never modify booking_status during UPDATE.
+    IF status_changed AND NOT sync_changed THEN
+      NEW.calendar_sync_status := CASE NEW.status
+        WHEN 'calendar_pending' THEN 'pending'
+        WHEN 'booked'           THEN 'synced'
+        WHEN 'calendar_failed'  THEN 'failed'
+        ELSE NULL
+      END;
+
+      IF NEW.calendar_sync_status IS NULL THEN
+        RAISE EXCEPTION
+          'audit_bookings: invalid legacy status: %',
+          NEW.status;
+      END IF;
+
+    ELSIF sync_changed AND NOT status_changed THEN
+      NEW.status := CASE NEW.calendar_sync_status
+        WHEN 'pending' THEN 'calendar_pending'
+        WHEN 'synced'  THEN 'booked'
+        WHEN 'failed'  THEN 'calendar_failed'
+        ELSE NULL
+      END;
+
+      IF NEW.status IS NULL THEN
+        RAISE EXCEPTION
+          'audit_bookings: invalid calendar_sync_status: %',
+          NEW.calendar_sync_status;
+      END IF;
+    END IF;
+  END IF;
+
+  -- Validate the final pair for both INSERT and UPDATE.
+  expected_legacy_status := CASE NEW.calendar_sync_status
+    WHEN 'pending' THEN 'calendar_pending'
+    WHEN 'synced'  THEN 'booked'
+    WHEN 'failed'  THEN 'calendar_failed'
+    ELSE NULL
+  END;
+
+  IF expected_legacy_status IS NULL THEN
+    RAISE EXCEPTION
+      'audit_bookings: invalid calendar_sync_status: %',
+      NEW.calendar_sync_status;
+  END IF;
+
+  IF NEW.status IS DISTINCT FROM expected_legacy_status THEN
+    RAISE EXCEPTION
+      'audit_bookings: inconsistent status pair: status=%, calendar_sync_status=%',
+      NEW.status,
+      NEW.calendar_sync_status;
+  END IF;
+
+  RETURN NEW;
+END;
+$$;
+
+-- 3. Recreate the trigger so the new function body is bound.
+DROP TRIGGER IF EXISTS audit_bookings_status_compat
+  ON public.audit_bookings;
+
+CREATE TRIGGER audit_bookings_status_compat
+  BEFORE INSERT OR UPDATE ON public.audit_bookings
+  FOR EACH ROW
+  EXECUTE FUNCTION public.sync_audit_booking_status_compat();
+
+-- 4. Harden: do not let anonymous roles execute this internal function directly.
+REVOKE EXECUTE ON FUNCTION public.sync_audit_booking_status_compat()
+  FROM PUBLIC, anon, authenticated;
+
+COMMIT;
+```
+
+### Deploy and validation
+
+1. Create `supabase/migrations/006a_booking_status_contract_bridge.sql`.
+2. Apply the migration to Supabase.
+3. Deploy the current application code (no application code changes in B1).
+4. Run the preflight SQL and confirm it returns `0`:
+
+```sql
+SELECT
+  id,
+  status,
+  calendar_sync_status
+FROM public.audit_bookings
+WHERE status IS DISTINCT FROM CASE calendar_sync_status
+  WHEN 'pending' THEN 'calendar_pending'
+  WHEN 'synced'  THEN 'booked'
+  WHEN 'failed'  THEN 'calendar_failed'
+END;
+```
+
+5. Run the required trigger tests in a transaction (roll back after each test):
+
+```sql
+-- Test 1: old-style INSERT with only legacy status
+BEGIN;
+INSERT INTO public.audit_bookings (
+  business_name, no_website, city, business_type, goals,
+  name, email, selected_slot_start, selected_slot_end,
+  status, management_token_hash, management_token_encrypted,
+  management_token_expires_at, session_id
+) VALUES (
+  'Bridge Test 1', true, 'Budapest', 'Other', ARRAY['more_visibility']::text[],
+  'Test', 'test@example.com', '2030-01-01T10:00:00Z', '2030-01-01T10:30:00Z',
+  'booked', 'hash1', 'enc1', '2030-02-01T10:30:00Z', 'sess1'
+);
+SELECT status, booking_status, calendar_sync_status FROM public.audit_bookings WHERE management_token_hash = 'hash1';
+ROLLBACK;
+-- Expected: status=booked, booking_status=booked, calendar_sync_status=synced
+
+-- Test 2: new-style INSERT without legacy status
+BEGIN;
+INSERT INTO public.audit_bookings (
+  business_name, no_website, city, business_type, goals,
+  name, email, selected_slot_start, selected_slot_end,
+  booking_status, calendar_sync_status, management_token_hash,
+  management_token_encrypted, management_token_expires_at, session_id
+) VALUES (
+  'Bridge Test 2', true, 'Budapest', 'Other', ARRAY['more_visibility']::text[],
+  'Test', 'test@example.com', '2030-01-01T11:00:00Z', '2030-01-01T11:30:00Z',
+  'booked', 'synced', 'hash2', 'enc2', '2030-02-01T11:30:00Z', 'sess2'
+);
+SELECT status, booking_status, calendar_sync_status FROM public.audit_bookings WHERE management_token_hash = 'hash2';
+ROLLBACK;
+-- Expected: status=booked, booking_status=booked, calendar_sync_status=synced
+
+-- Test 3: inconsistent INSERT must fail
+BEGIN;
+DO $$
+BEGIN
+  INSERT INTO public.audit_bookings (
+    business_name, no_website, city, business_type, goals,
+    name, email, selected_slot_start, selected_slot_end,
+    booking_status, calendar_sync_status, status,
+    management_token_hash, management_token_encrypted,
+    management_token_expires_at, session_id
+  ) VALUES (
+    'Bridge Test 3', true, 'Budapest', 'Other', ARRAY['more_visibility']::text[],
+    'Test', 'test@example.com', '2030-01-01T12:00:00Z', '2030-01-01T12:30:00Z',
+    'booked', 'synced', 'calendar_failed', 'hash3', 'enc3',
+    '2030-02-01T12:30:00Z', 'sess3'
+  );
+  RAISE EXCEPTION 'Expected insert to fail';
+EXCEPTION
+  WHEN raise_exception THEN
+    IF SQLERRM = 'Expected insert to fail' THEN
+      RAISE;
+    END IF;
+    -- trigger exception caught, test passes
+END;
+$$;
+ROLLBACK;
+
+-- Test 4: old-style UPDATE of legacy status
+BEGIN;
+INSERT INTO public.audit_bookings (
+  business_name, no_website, city, business_type, goals,
+  name, email, selected_slot_start, selected_slot_end,
+  booking_status, calendar_sync_status, status,
+  management_token_hash, management_token_encrypted,
+  management_token_expires_at, session_id
+) VALUES (
+  'Bridge Test 4', true, 'Budapest', 'Other', ARRAY['more_visibility']::text[],
+  'Test', 'test@example.com', '2030-01-01T13:00:00Z', '2030-01-01T13:30:00Z',
+  'booked', 'synced', 'booked', 'hash4', 'enc4',
+  '2030-02-01T13:30:00Z', 'sess4'
+);
+UPDATE public.audit_bookings SET status = 'calendar_failed' WHERE management_token_hash = 'hash4';
+SELECT status, booking_status, calendar_sync_status FROM public.audit_bookings WHERE management_token_hash = 'hash4';
+ROLLBACK;
+-- Expected: status=calendar_failed, booking_status=booked, calendar_sync_status=failed
+
+-- Test 5: new-style UPDATE of calendar_sync_status
+BEGIN;
+INSERT INTO public.audit_bookings (
+  business_name, no_website, city, business_type, goals,
+  name, email, selected_slot_start, selected_slot_end,
+  booking_status, calendar_sync_status, status,
+  management_token_hash, management_token_encrypted,
+  management_token_expires_at, session_id
+) VALUES (
+  'Bridge Test 5', true, 'Budapest', 'Other', ARRAY['more_visibility']::text[],
+  'Test', 'test@example.com', '2030-01-01T14:00:00Z', '2030-01-01T14:30:00Z',
+  'booked', 'synced', 'booked', 'hash5', 'enc5',
+  '2030-02-01T14:30:00Z', 'sess5'
+);
+UPDATE public.audit_bookings SET calendar_sync_status = 'failed' WHERE management_token_hash = 'hash5';
+SELECT status, booking_status, calendar_sync_status FROM public.audit_bookings WHERE management_token_hash = 'hash5';
+ROLLBACK;
+-- Expected: status=calendar_failed, booking_status=booked, calendar_sync_status=failed
+
+-- Test 6: booking_status=cancelled must not be overwritten
+BEGIN;
+INSERT INTO public.audit_bookings (
+  business_name, no_website, city, business_type, goals,
+  name, email, selected_slot_start, selected_slot_end,
+  booking_status, calendar_sync_status, status,
+  management_token_hash, management_token_encrypted,
+  management_token_expires_at, session_id
+) VALUES (
+  'Bridge Test 6', true, 'Budapest', 'Other', ARRAY['more_visibility']::text[],
+  'Test', 'test@example.com', '2030-01-01T15:00:00Z', '2030-01-01T15:30:00Z',
+  'cancelled', 'synced', 'booked', 'hash6', 'enc6',
+  '2030-02-01T15:30:00Z', 'sess6'
+);
+UPDATE public.audit_bookings SET calendar_sync_status = 'failed' WHERE management_token_hash = 'hash6';
+SELECT status, booking_status, calendar_sync_status FROM public.audit_bookings WHERE management_token_hash = 'hash6';
+ROLLBACK;
+-- Expected: status=calendar_failed, booking_status=cancelled, calendar_sync_status=failed
+```
+
+6. Production smoke test:
+   - Create a booking without the application writing `status`.
+   - Verify the legacy `status` column is automatically populated by the trigger.
+   - Cancel/reschedule and verify all three status fields stay consistent.
+
+### Rollback — Phase B1
+
+Simple Vercel rollback to the previous commit. The trigger change is backward-compatible: old code writing `status` still works, and new code not writing `status` also works.
+
+If the trigger itself causes issues, revert the migration by restoring the original trigger function body from `005_booking_status_expand.sql`.
+
+---
+
+## Phase B2 — Application code cleanup
+
+### Objective
+
+Remove every legacy `status` write from the application. The DB bridge trigger keeps the legacy column in sync.
+
+### Code changes
+
+1. **Delete `src/lib/booking/legacyStatusMapper.ts`**
+   - Remove the file entirely.
+
+2. **`src/lib/booking/createBooking.ts`**
+   - Remove `import { toLegacyStatus } from './legacyStatusMapper';`.
+   - Remove the `status: toLegacyStatus(...)` line from the insert payload.
+   - Remove the `status: toLegacyStatus(...)` line from `updateBookingCalendarSync`.
+
+3. **`src/lib/booking/rescheduleBooking.ts`**
+   - Remove `import { toLegacyStatus } from './legacyStatusMapper';`.
+   - Remove all `status: toLegacyStatus(...)` lines from update payloads.
+
+4. **Audit**
+   - Run the search commands from Phase A again.
+   - Confirm that no production code writes the legacy `status` column.
+
+### Files changed
+
+- `src/lib/booking/legacyStatusMapper.ts` (deleted)
+- `src/lib/booking/createBooking.ts`
+- `src/lib/booking/rescheduleBooking.ts`
+
+### Proposed diff (summary)
+
+```diff
+- import { toLegacyStatus } from './legacyStatusMapper';
+
+  .insert({
+    ...
+    booking_status: 'booked',
+    calendar_sync_status: 'pending',
+-   status: toLegacyStatus('pending'),
+    ...
+  })
+```
+
+```diff
+  .update({
+    calendar_sync_status: calendarSyncStatus,
+-   status: toLegacyStatus(calendarSyncStatus),
+    ...
+  })
+```
+
+### Deploy and validation
+
+1. Deploy the Phase B2 commit to production.
+2. Run production smoke tests:
+   - Create a booking.
+   - Verify `booking_status = 'booked'`, `calendar_sync_status = 'synced'`, and `status = 'booked'` (set by trigger).
+   - Reschedule a booking.
+   - Verify `status` follows `calendar_sync_status` via the trigger.
+   - Cancel a booking.
+   - Verify `booking_status = 'cancelled'` and legacy `status` stays at last sync state.
+3. Run the consistency SQL:
+
+```sql
+SELECT
+  booking_status,
+  calendar_sync_status,
+  status,
+  count(*)
+FROM public.audit_bookings
+GROUP BY booking_status, calendar_sync_status, status
+ORDER BY booking_status, calendar_sync_status, status;
+```
+
+Expected main combinations:
+
+```text
+booked    | synced | booked
+cancelled | synced | booked
+```
+
+4. Monitor for 24–48 hours.
+
+### Rollback — Phase B2
+
+Simple Vercel rollback to the previous commit. The previous commit writes `status` explicitly, and the B1 bidirectional trigger handles it correctly.
+
+---
+
+## Phase B3 — Final contract migration
+
+### Objective
+
+Remove the legacy `status` column, its trigger, its function, its constraint, and its index from the database.
+
+### Preconditions before Phase B3
 
 All of these must be true in addition to the initial preconditions:
 
-- [ ] Phase A has been in production for at least 48 hours without issues.
-- [ ] A codebase-wide search confirms no production code reads the `status` column.
+- [ ] Phase B2 has been in production for at least 48 hours without issues.
+- [ ] A codebase-wide search confirms no production code references the `status` column.
 - [ ] A codebase-wide search confirms no production code references `sync_audit_booking_status_compat`.
 - [ ] A codebase-wide search confirms no production code references `audit_bookings_status_compat`.
-- [ ] The compatibility mapper is the only remaining place that writes `status`.
-- [ ] The consistency SQL above shows only expected pairs and no NULL new fields.
 
-### Mandatory pre-migration checks
-
-Run these before applying the Phase B migration:
+### Mandatory preflight checks
 
 ```sql
 -- No NULL new fields
-SELECT count(*)
+SELECT count(*) AS invalid_rows
 FROM public.audit_bookings
 WHERE booking_status IS NULL
    OR calendar_sync_status IS NULL;
 -- Expected: 0
 
--- No unexpected status combinations
-SELECT booking_status, calendar_sync_status, count(*)
+-- Status combinations look clean
+SELECT
+  booking_status,
+  calendar_sync_status,
+  count(*)
 FROM public.audit_bookings
 GROUP BY booking_status, calendar_sync_status
 ORDER BY booking_status, calendar_sync_status;
+
+-- No views or policies depend on the legacy status column
+SELECT
+  view_schema,
+  view_name
+FROM information_schema.view_column_usage
+WHERE table_schema = 'public'
+  AND table_name = 'audit_bookings'
+  AND column_name = 'status';
+-- Expected: 0 rows
 ```
 
-### Database changes
-
-1. Drop the compatibility trigger.
-2. Drop the compatibility function.
-3. Drop the legacy index on `status`.
-4. Drop the legacy check constraint on `status` if one exists.
-5. Drop the legacy `status` column.
-6. Remove the application-side compatibility mapper.
-
-### Proposed SQL (for review, not yet a migration file)
+### Proposed SQL (for review, not a migration file yet)
 
 ```sql
--- Phase B: final contract
--- Run only after Phase A has been stable in production.
+-- ============================================================
+-- 006b_booking_status_contract_drop.sql
+-- Final contract: remove the legacy status column and all
+-- compatibility objects.
+-- ============================================================
 
 BEGIN;
 
@@ -236,46 +549,40 @@ DROP FUNCTION IF EXISTS public.sync_audit_booking_status_compat();
 -- 3. Remove the legacy index
 DROP INDEX IF EXISTS public.idx_audit_bookings_status;
 
--- 4. Remove the legacy check constraint if it exists
+-- 4. Remove the legacy CHECK constraint if it exists
 ALTER TABLE public.audit_bookings
   DROP CONSTRAINT IF EXISTS audit_bookings_status_check;
 
 -- 5. Remove the legacy column
 ALTER TABLE public.audit_bookings
-  DROP COLUMN IF EXISTS status;
+  DROP COLUMN status;
 
 COMMIT;
 ```
 
-> The exact constraint and function names must be verified against the live database before the migration is finalised.
-
-### Application code changes for Phase B
-
-- Remove the compatibility mapper that wrote the legacy `status`.
-- Update insert/update calls to no longer include `status`.
-- Update any remaining type definitions that still allow a `status` field.
+> The exact constraint, index, function, and trigger names must be verified against the live database before the migration is finalised.
 
 ### Deploy and validation
 
-1. Create the migration file `supabase/migrations/006_booking_status_contract.sql` with the SQL above.
-2. Apply the migration to the Supabase project (CLI or Dashboard SQL Editor).
-3. Deploy the matching application commit to production.
+1. Create `supabase/migrations/006b_booking_status_contract_drop.sql`.
+2. Apply the migration to Supabase.
+3. Deploy the matching application commit.
 4. Smoke test:
    - Create a booking.
    - Verify `booking_status` and `calendar_sync_status` are set correctly.
    - Verify no `status` column exists.
    - Cancel and reschedule still work.
 
-### Rollback — Phase B
+### Rollback — Phase B3
 
-After Phase B, you **cannot** roll back to a commit that expects the `status` column without also reverting the database migration.
+After Phase B3, you **cannot** roll back to a commit that expects the `status` column without also reverting the database migration.
 
 If a rollback is needed:
 
-1. Revert the database migration manually (restore the column, trigger, function, index, and constraint).
+1. Restore the `status` column, trigger, function, index, and constraint manually.
 2. Then deploy the previous application commit.
 
-Because this is more complex, Phase B should only happen after Phase A is proven stable.
+Because this is more complex, Phase B3 should only happen after Phase B2 is proven stable.
 
 ---
 
@@ -283,53 +590,56 @@ Because this is more complex, Phase B should only happen after Phase A is proven
 
 | Step | Risk | Mitigation |
 |------|------|------------|
-| Phase A deploy | New code reads wrong status field | Comprehensive code audit + smoke tests |
-| Phase A deploy | Legacy `status` writes removed too early, causing `NOT NULL` insert failures | Keep legacy writes in an isolated mapper |
-| Phase A deploy | Compatibility trigger behaves unexpectedly | Verify trigger direction before deploy |
-| Phase B migration | Old rollback commit no longer deployable | Document that DB revert is required first |
-| Phase B migration | Trigger removal breaks legacy code paths | Phase A already removed those paths |
+| B1 trigger deploy | Trigger loop or precedence bug | Careful bidirectional logic: capture changes first, then use exclusive `IF / ELSIF` branches |
+| B1 trigger deploy | New inserts fail because `status` stays `NOT NULL` | Trigger fills `status` from `calendar_sync_status` when application omits it |
+| B1 trigger deploy | Invalid values silently default to wrong status | No silent `ELSE` fallbacks; explicit `RAISE EXCEPTION` for invalid input |
+| B2 code deploy | Some code path still writes `status` | Full codebase audit + smoke tests |
+| B3 migration | Old rollback commit no longer deployable | Document that DB revert is required first |
 
 ## Checklist summary
 
-### Before Phase A
+### Before Phase B1
 
-- [ ] Production stable.
-- [ ] Booking, cancel, reschedule all tested in production.
+- [ ] Production stable after `3706d71`.
+- [ ] Booking, reschedule, cancel all tested in production.
 - [ ] No `calendar_sync_status = 'failed'`.
 - [ ] No Vercel runtime errors.
 - [ ] Emails deliver.
-- [ ] 48 hours passed since last booking-flow change.
+- [ ] 48 hours passed since `3706d71` deploy.
 
-### Phase A
+### Phase B1
 
-- [ ] All reads, queries, conditions, API responses, and emails use only `booking_status` and `calendar_sync_status`.
-- [ ] Legacy `status` writes isolated in a single compatibility mapper.
-- [ ] Legacy DB objects still present.
-- [ ] Audit searches run and only the mapper references `status`.
-- [ ] Deploy to production.
-- [ ] Smoke tests pass (booking, cancel, reschedule).
-- [ ] Rollback test passes (old code reads new records).
-- [ ] Consistency SQL shows expected pairs.
+- [ ] Create and apply `006a_booking_status_contract_bridge.sql`.
+- [ ] Run preflight SQL and trigger tests.
+- [ ] Verify trigger populates `status` when application omits it.
+- [ ] Smoke test booking, reschedule, cancel.
 - [ ] Monitor 24–48 hours.
 
-### Before Phase B
+### Phase B2
 
-- [ ] Phase A stable for 48 hours.
-- [ ] Codebase search confirms no reads of the `status` column.
-- [ ] Codebase search confirms no references to the trigger or function.
-- [ ] Pre-migration SQL checks pass.
+- [ ] Delete `legacyStatusMapper.ts`.
+- [ ] Remove `status` from all insert/update payloads.
+- [ ] Run audit searches.
+- [ ] Deploy to production.
+- [ ] Smoke test booking, reschedule, cancel.
+- [ ] Verify consistency SQL.
+- [ ] Monitor 24–48 hours.
 
-### Phase B
+### Before Phase B3
 
-- [ ] Create `006_booking_status_contract.sql`.
-- [ ] Apply migration.
-- [ ] Remove the application-side compatibility mapper.
+- [ ] Phase B2 stable for 48 hours.
+- [ ] Codebase search confirms no `status` references.
+- [ ] Preflight SQL checks pass.
+
+### Phase B3
+
+- [ ] Create and apply `006b_booking_status_contract_drop.sql`.
 - [ ] Deploy matching commit.
 - [ ] Smoke tests pass.
 - [ ] Confirm `status` column is gone.
 
 ## Notes
 
-- This document is a plan. No migration file, code change, or commit should be created until the plan is reviewed and approved.
+- This document is a plan. No migration file, code change, or commit should be created until each phase is reviewed and approved individually.
 - The SQL snippets above are proposals for discussion, not final migration files.
-- Phase B SQL must be verified against the live database before execution.
+- Phase B3 SQL must be verified against the live database before execution.
