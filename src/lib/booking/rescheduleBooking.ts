@@ -10,6 +10,7 @@ import { hashManagementToken, decryptManagementToken } from '../tokens/crypto';
 import { googleCalendarProvider } from '../calendar/provider/google';
 import { isSlotAvailable } from '../calendar/syncBookingToCalendar';
 import { trackEvent } from './trackEvent';
+import { rescheduleBookingReminders } from './reminderScheduling';
 import {
   isSlotValidAccordingToRules,
   getExpectedSlotEnd,
@@ -438,6 +439,8 @@ export async function rescheduleBooking(
   }
 
   // 15. Success
+  await rescheduleBookingReminders(bookingId);
+
   await trackEvent({
     eventName: 'booking_rescheduled',
     sessionId: booking.session_id,

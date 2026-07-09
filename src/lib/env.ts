@@ -57,6 +57,9 @@ export const env = {
   auditCancelCutoffHours: parseInt(read('AUDIT_CANCEL_CUTOFF_HOURS') ?? '12', 10),
   auditRescheduleCutoffHours: parseInt(read('AUDIT_RESCHEDULE_CUTOFF_HOURS') ?? '12', 10),
   auditMaxReschedules: parseInt(read('AUDIT_MAX_RESCHEDULES') ?? '2', 10),
+
+  // Reminder cron secret (must match Supabase Vault secret 'reminder_cron_secret')
+  reminderCronSecret: read('REMINDER_CRON_SECRET'),
 };
 
 /**

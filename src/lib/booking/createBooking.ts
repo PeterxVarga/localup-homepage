@@ -10,6 +10,7 @@ import {
   hashManagementToken,
   encryptManagementToken,
 } from '../tokens/crypto';
+import { scheduleBookingReminders } from './reminderScheduling';
 
 export interface CreateBookingResult {
   success: true;
@@ -115,6 +116,7 @@ export async function createBooking(
 /**
  * Update booking status after calendar provider sync attempt.
  * The legacy `status` column is kept in sync by the DB bridge trigger.
+ * When the sync succeeds, schedule reminder emails.
  */
 export async function updateBookingCalendarSync(
   bookingId: string,
@@ -132,6 +134,10 @@ export async function updateBookingCalendarSync(
         : {}),
     })
     .eq('id', bookingId);
+
+  if (calendarSyncStatus === 'synced') {
+    await scheduleBookingReminders(bookingId);
+  }
 }
 
 /**

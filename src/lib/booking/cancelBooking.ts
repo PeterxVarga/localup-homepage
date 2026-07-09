@@ -8,6 +8,7 @@ import { env } from '../env';
 import { hashManagementToken } from '../tokens/crypto';
 import { googleCalendarProvider } from '../calendar/provider/google';
 import { trackEvent } from './trackEvent';
+import { cancelBookingReminders } from './reminderScheduling';
 
 export interface CancelBookingResult {
   success: true;
@@ -320,6 +321,8 @@ export async function cancelBooking(
       .eq('id', updated.id);
     calendarDeleted = true;
   }
+
+  await cancelBookingReminders(updated.id);
 
   return {
     success: true,
