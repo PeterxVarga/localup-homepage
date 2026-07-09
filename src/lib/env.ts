@@ -56,6 +56,7 @@ export const env = {
   // Cancel / reschedule cutoff hours
   auditCancelCutoffHours: parseInt(read('AUDIT_CANCEL_CUTOFF_HOURS') ?? '12', 10),
   auditRescheduleCutoffHours: parseInt(read('AUDIT_RESCHEDULE_CUTOFF_HOURS') ?? '12', 10),
+  auditMaxReschedules: parseInt(read('AUDIT_MAX_RESCHEDULES') ?? '2', 10),
 };
 
 /**

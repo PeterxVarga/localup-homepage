@@ -48,6 +48,28 @@ export type DeleteEventResult =
   | { ok: false; provider: string; eventId: string; error: string; code?: string };
 
 /**
+ * Parameters for patching an existing calendar event.
+ */
+export interface PatchEventParams {
+  start: string; // ISO 8601
+  end: string; // ISO 8601
+}
+
+/**
+ * Discriminated union for event patch results.
+ */
+export type PatchEventResult =
+  | { ok: true; provider: string; eventId: string; meetLink?: string; htmlLink?: string }
+  | { ok: false; provider: string; eventId: string; error: string; code?: string };
+
+/**
+ * Result of fetching a single calendar event.
+ */
+export type GetEventResult =
+  | { ok: true; provider: string; eventId: string; start?: string; end?: string; meetLink?: string }
+  | { ok: false; provider: string; eventId: string; error: string; code?: string };
+
+/**
  * Calendar provider interface.
  * Implementations: Google, Outlook, CalDAV, ICS feed, etc.
  *
@@ -81,6 +103,12 @@ export interface CalendarProvider {
 
   /** Delete a calendar event by provider event ID */
   deleteEvent?(eventId: string): Promise<DeleteEventResult>;
+
+  /** Patch an existing calendar event (e.g. reschedule) */
+  patchEvent?(eventId: string, params: PatchEventParams): Promise<PatchEventResult>;
+
+  /** Fetch a single calendar event by ID */
+  getEvent?(eventId: string): Promise<GetEventResult>;
 }
 
 /**

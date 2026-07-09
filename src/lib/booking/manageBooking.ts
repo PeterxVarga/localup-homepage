@@ -20,6 +20,9 @@ export interface ManageBookingDetails {
   isCancelled: boolean;
   isExpired: boolean;
   cancelCutoffPassed: boolean;
+  rescheduleCutoffPassed: boolean;
+  rescheduleCount: number;
+  maxReschedules: number;
 }
 
 export type ManageLookupResult =
@@ -74,10 +77,12 @@ export async function getManageBookingDetails(
 
   const slotStart = new Date(booking.selected_slot_start);
   const cutoffHours = 12;
-  const cutoffTime = new Date(
+  const cancelCutoffTime = new Date(
     slotStart.getTime() - cutoffHours * 60 * 60 * 1000,
   );
-  const cancelCutoffPassed = now > cutoffTime;
+  const rescheduleCutoffTime = new Date(
+    slotStart.getTime() - cutoffHours * 60 * 60 * 1000,
+  );
 
   return {
     found: true,
@@ -91,7 +96,10 @@ export async function getManageBookingDetails(
       meetLink: booking.meet_link || undefined,
       isCancelled: booking.booking_status === 'cancelled',
       isExpired,
-      cancelCutoffPassed,
+      cancelCutoffPassed: now > cancelCutoffTime,
+      rescheduleCutoffPassed: now > rescheduleCutoffTime,
+      rescheduleCount: booking.reschedule_count,
+      maxReschedules: 2,
     },
   };
 }

@@ -129,7 +129,7 @@ export const googleCalendarProvider: CalendarProvider = {
     }
   },
 
-  async deleteEvent(eventId: string) {
+  async patchEvent(eventId: string, params: import('../types').PatchEventParams) {
     if (!isGoogleCalendarConfigured()) {
       return {
         ok: false,
@@ -142,10 +142,60 @@ export const googleCalendarProvider: CalendarProvider = {
 
     try {
       const { calendar, calendarId } = getGoogleCalendarClient();
-      await calendar.events.delete({ calendarId, eventId });
-      return { ok: true as const, provider: 'google', eventId };
+      const event = await calendar.events.patch({
+        calendarId,
+        eventId,
+        sendUpdates: 'none',
+        requestBody: {
+          start: { dateTime: params.start, timeZone: 'Europe/Budapest' },
+          end: { dateTime: params.end, timeZone: 'Europe/Budapest' },
+        },
+      });
+
+      return {
+        ok: true as const,
+        provider: 'google',
+        eventId: event.data.id ?? eventId,
+        htmlLink: event.data.htmlLink ?? undefined,
+        meetLink: event.data.hangoutLink ?? undefined,
+      };
     } catch (err) {
-      console.error('Google Calendar event deletion failed:', err);
+      console.error('Google Calendar event patch failed:', err);
+      return {
+        ok: false,
+        provider: 'google',
+        eventId,
+        error: 'Google Calendar API error',
+        code: 'calendar_api_error',
+      } as const;
+    }
+  },
+
+  async getEvent(eventId: string) {
+    if (!isGoogleCalendarConfigured()) {
+      return {
+        ok: false,
+        provider: 'google',
+        eventId,
+        error: 'Google Calendar not configured',
+        code: 'not_configured',
+      } as const;
+    }
+
+    try {
+      const { calendar, calendarId } = getGoogleCalendarClient();
+      const event = await calendar.events.get({ calendarId, eventId });
+
+      return {
+        ok: true as const,
+        provider: 'google',
+        eventId: event.data.id ?? eventId,
+        start: event.data.start?.dateTime ?? undefined,
+        end: event.data.end?.dateTime ?? undefined,
+        meetLink: event.data.hangoutLink ?? undefined,
+      };
+    } catch (err) {
+      console.error('Google Calendar event get failed:', err);
       return {
         ok: false,
         provider: 'google',
