@@ -7,6 +7,7 @@
 // ============================================================
 
 import { getSupabase } from '../supabase';
+import { trackEvent } from './trackEvent';
 
 const REMINDER_TYPES = ['reminder_24h', 'reminder_1h'] as const;
 type ReminderType = (typeof REMINDER_TYPES)[number];
@@ -31,47 +32,93 @@ function computeScheduledFor(slotStart: string, offsetMinutes: number): Date {
  * Create pending reminder records for a newly confirmed booking.
  * Skips reminders whose scheduled_for is already in the past.
  * Safe to call multiple times (ON CONFLICT DO NOTHING).
+ *
+ * Logs `reminder_scheduled` on success (even if 0 reminders were created)
+ * and `reminder_scheduling_failed` on any unexpected error. Never throws.
  */
 export async function scheduleBookingReminders(
   bookingId: string,
 ): Promise<void> {
-  const { data: booking, error } = await getSupabase()
-    .from('audit_bookings')
-    .select('selected_slot_start, reschedule_count')
-    .eq('id', bookingId)
-    .single();
+  let sessionId = 'reminder-system';
 
-  if (error || !booking) {
-    console.error('scheduleBookingReminders: booking lookup failed', error);
-    return;
-  }
+  try {
+    const { data: booking, error } = await getSupabase()
+      .from('audit_bookings')
+      .select('selected_slot_start, reschedule_count, session_id')
+      .eq('id', bookingId)
+      .single();
 
-  const slotVersion = booking.reschedule_count ?? 0;
-  const now = new Date();
-  const reminders = REMINDER_SPECS
-    .map((spec) => ({
-      booking_id: bookingId,
-      notification_type: spec.type,
-      slot_version: slotVersion,
-      scheduled_for: computeScheduledFor(
-        booking.selected_slot_start,
-        spec.offsetMinutes,
-      ).toISOString(),
-      status: 'pending' as const,
-    }))
-    .filter((r) => new Date(r.scheduled_for) > now);
+    if (error || !booking) {
+      console.error('scheduleBookingReminders: booking lookup failed', error);
+      await trackEvent({
+        eventName: 'reminder_scheduling_failed',
+        sessionId,
+        bookingId,
+        metadata: { phase: 'booking_lookup', error: error?.message ?? 'missing' },
+      });
+      return;
+    }
 
-  if (reminders.length === 0) return;
+    sessionId = booking.session_id || sessionId;
 
-  const { error: insertError } = await getSupabase()
-    .from('booking_notifications')
-    .upsert(reminders, {
-      onConflict: 'booking_id,notification_type,slot_version',
-      ignoreDuplicates: true,
+    const slotVersion = booking.reschedule_count ?? 0;
+    const now = new Date();
+    const reminders = REMINDER_SPECS
+      .map((spec) => ({
+        booking_id: bookingId,
+        notification_type: spec.type,
+        slot_version: slotVersion,
+        scheduled_for: computeScheduledFor(
+          booking.selected_slot_start,
+          spec.offsetMinutes,
+        ).toISOString(),
+        status: 'pending' as const,
+      }))
+      .filter((r) => new Date(r.scheduled_for) > now);
+
+    const { error: insertError } = await getSupabase()
+      .from('booking_notifications')
+      .upsert(reminders, {
+        onConflict: 'booking_id,notification_type,slot_version',
+        ignoreDuplicates: true,
+      });
+
+    if (insertError) {
+      console.error('scheduleBookingReminders: insert failed', insertError);
+      await trackEvent({
+        eventName: 'reminder_scheduling_failed',
+        sessionId,
+        bookingId,
+        metadata: {
+          phase: 'insert',
+          error: insertError.message,
+          code: insertError.code,
+        },
+      });
+      return;
+    }
+
+    await trackEvent({
+      eventName: 'reminder_scheduled',
+      sessionId,
+      bookingId,
+      metadata: {
+        count: reminders.length,
+        types: reminders.map((r) => r.notification_type),
+        slot_version: slotVersion,
+      },
     });
-
-  if (insertError) {
-    console.error('scheduleBookingReminders: insert failed', insertError);
+  } catch (err) {
+    console.error('scheduleBookingReminders: unexpected error', err);
+    await trackEvent({
+      eventName: 'reminder_scheduling_failed',
+      sessionId,
+      bookingId,
+      metadata: {
+        phase: 'unexpected',
+        error: err instanceof Error ? err.message : String(err),
+      },
+    });
   }
 }
 
@@ -95,6 +142,7 @@ export async function rescheduleBookingReminders(
   }
 
   // 2. Create reminders for the current slot.
+  //    scheduleBookingReminders logs its own success/failure event.
   await scheduleBookingReminders(bookingId);
 }
 

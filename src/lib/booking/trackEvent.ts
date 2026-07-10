@@ -22,7 +22,9 @@ export type AuditEventName =
   | 'booking_reschedule_failed'
   | 'reschedule_email_failed'
   | 'reminder_permanently_failed'
-  | 'reminder_cancelled';
+  | 'reminder_cancelled'
+  | 'reminder_scheduled'
+  | 'reminder_scheduling_failed';
 
 interface TrackEventParams {
   eventName: AuditEventName;
