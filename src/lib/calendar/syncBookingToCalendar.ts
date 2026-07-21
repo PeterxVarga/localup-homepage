@@ -150,7 +150,7 @@ export async function getAggregatedFreeBusy(
   const allBusy = await Promise.all(
     availabilityProviders.map((p) => {
       if (!p.getFreeBusy) return Promise.resolve([]);
-      return p.getFreeBusy(timeMin, timeMax).catch(() => []);
+      return p.getFreeBusy(timeMin, timeMax);
     }),
   );
   return allBusy.flat();
