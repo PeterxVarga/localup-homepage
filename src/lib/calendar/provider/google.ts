@@ -14,7 +14,11 @@ import type {
 import { env } from '../../env';
 
 export function isGoogleCalendarConfigured(): boolean {
-  return !!(env.googleClientId && env.googleClientSecret && env.googleRefreshToken);
+  return !!(
+    env.googleClientId &&
+    env.googleClientSecret &&
+    env.googleRefreshToken
+  );
 }
 
 /**
@@ -22,7 +26,10 @@ export function isGoogleCalendarConfigured(): boolean {
  * We only instantiate this when a calendar call is actually made and
  * all credentials are present. No half-configured global client.
  */
-export function getGoogleCalendarClient(): { calendar: calendar_v3.Calendar; calendarId: string } {
+export function getGoogleCalendarClient(): {
+  calendar: calendar_v3.Calendar;
+  calendarId: string;
+} {
   if (!isGoogleCalendarConfigured()) {
     throw new Error('Google Calendar is not configured');
   }
@@ -62,13 +69,17 @@ export const googleCalendarProvider: CalendarProvider = {
         requestBody: { timeMin, timeMax, items: [{ id: calendarId }] },
       });
 
-      return (res.data.calendars?.[calendarId]?.busy ?? []).map((b) => ({
-        start: b.start ?? '',
-        end: b.end ?? '',
-      }));
+      return (res.data.calendars?.[calendarId]?.busy ?? []).map((busy) => {
+        if (!busy.start || !busy.end) {
+          throw new Error('Google Calendar returned an invalid busy interval');
+        }
+        return { start: busy.start, end: busy.end };
+      });
     } catch (err) {
       console.error('Google freeBusy query failed:', err);
-      return [];
+      throw new Error('Google Calendar availability check failed', {
+        cause: err,
+      });
     }
   },
 
@@ -129,7 +140,10 @@ export const googleCalendarProvider: CalendarProvider = {
     }
   },
 
-  async patchEvent(eventId: string, params: import('../types').PatchEventParams) {
+  async patchEvent(
+    eventId: string,
+    params: import('../types').PatchEventParams,
+  ) {
     if (!isGoogleCalendarConfigured()) {
       return {
         ok: false,

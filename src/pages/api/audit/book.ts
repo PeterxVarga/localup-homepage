@@ -7,12 +7,23 @@
 import type { APIRoute } from 'astro';
 import { auditBookingSchema } from '../../../lib/audit/validation';
 import { isSupabaseConfigured } from '../../../lib/supabase';
-import { createBooking, updateBookingCalendarSync } from '../../../lib/booking/createBooking';
+import {
+  createBooking,
+  updateBookingCalendarSync,
+} from '../../../lib/booking/createBooking';
 import { trackEvent } from '../../../lib/booking/trackEvent';
-import { syncBookingToCalendar, isSlotAvailable } from '../../../lib/calendar/syncBookingToCalendar';
+import {
+  syncBookingToCalendar,
+  getAggregatedFreeBusy,
+} from '../../../lib/calendar/syncBookingToCalendar';
+import { generateAvailableSlots } from '../../../lib/booking/generateSlots';
 import { sendBookingConfirmation } from '../../../lib/email/sendBookingConfirmation';
 import { sendAdminNotification } from '../../../lib/email/sendAdminNotification';
-import { isRateLimited, recordRequest, getRetryAfterSeconds } from '../../../lib/rateLimit';
+import {
+  isRateLimited,
+  recordRequest,
+  getRetryAfterSeconds,
+} from '../../../lib/rateLimit';
 
 const BOOKING_LIMIT = { namespace: 'book', max: 3, windowMs: 10 * 60_000 };
 
@@ -101,14 +112,24 @@ export const POST: APIRoute = async ({ request }) => {
     metadata: { goals: input.goals, businessType: input.businessType },
   });
 
-  // 1. Slot re-check: aggregated freeBusy across all providers
+  // 1. Rebuild availability from the DB-backed schedule, bookings and
+  // calendar providers. The submitted pair must be one of the exact slots
+  // currently offered; failures are fail-closed to avoid double bookings.
   try {
-    const available = await isSlotAvailable(input.slotStart, input.slotEnd);
+    const requestedStart = new Date(input.slotStart).toISOString();
+    const requestedEnd = new Date(input.slotEnd).toISOString();
+    const availableDays = await generateAvailableSlots(getAggregatedFreeBusy);
+    const available = availableDays.some((day) =>
+      day.slots.some(
+        (slot) => slot.start === requestedStart && slot.end === requestedEnd,
+      ),
+    );
+
     if (!available) {
       await trackEvent({
         eventName: 'audit_booking_failed',
         sessionId,
-        metadata: { reason: 'slot_conflict_freebusy' },
+        metadata: { reason: 'slot_no_longer_available' },
       });
       return jsonResponse(
         {
@@ -121,8 +142,16 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
   } catch (err) {
-    console.error('freeBusy check error:', err);
-    // Continue with booking — don't block on freeBusy failure
+    console.error('availability revalidation error:', err);
+    return jsonResponse(
+      {
+        success: false,
+        error: 'service_unavailable',
+        message:
+          'A foglalási időpont most nem ellenőrizhető. Kérlek próbáld újra később.',
+      },
+      503,
+    );
   }
 
   // 2. Insert booking (DB-level race condition protection via unique index)
@@ -214,7 +243,11 @@ export const POST: APIRoute = async ({ request }) => {
         : 'audit_booking_confirmed',
     sessionId,
     bookingId,
-    metadata: { bookingStatus: 'booked', calendarSyncStatus, goals: input.goals },
+    metadata: {
+      bookingStatus: 'booked',
+      calendarSyncStatus,
+      goals: input.goals,
+    },
   });
 
   return jsonResponse(

@@ -47,8 +47,7 @@ export interface RescheduleBookingError {
 }
 
 export type RescheduleBookingResult =
-  | RescheduleBookingSuccess
-  | RescheduleBookingError;
+  RescheduleBookingSuccess | RescheduleBookingError;
 
 function getCutoffTime(slotStart: string): Date {
   const start = new Date(slotStart);
@@ -107,7 +106,9 @@ export async function rescheduleBooking(
   }
 
   try {
-    const decrypted = decryptManagementToken(booking.management_token_encrypted);
+    const decrypted = decryptManagementToken(
+      booking.management_token_encrypted,
+    );
     if (decrypted !== rawToken) {
       return {
         success: false,
@@ -166,7 +167,18 @@ export async function rescheduleBooking(
     };
   }
 
-  const newSlotEnd = getExpectedSlotEnd(newSlotStart);
+  let newSlotEnd: string;
+  try {
+    newSlotEnd = await getExpectedSlotEnd(newSlotStart);
+  } catch (error) {
+    console.error('Availability schedule lookup failed:', error);
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message: 'A foglalási időpontok átmenetileg nem ellenőrizhetők.',
+      status: 503,
+    };
+  }
 
   // 6. Idempotency: same slot requested
   if (isSameSlot(currentSlotStart, currentSlotEnd, newSlotStart, newSlotEnd)) {
@@ -188,7 +200,23 @@ export async function rescheduleBooking(
   }
 
   // 7. Validate new slot against scheduling rules
-  if (!isSlotValidAccordingToRules(newSlotStart, newSlotEnd)) {
+  let followsAvailabilityRules: boolean;
+  try {
+    followsAvailabilityRules = await isSlotValidAccordingToRules(
+      newSlotStart,
+      newSlotEnd,
+    );
+  } catch (error) {
+    console.error('Availability rule validation failed:', error);
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message: 'A foglalási időpontok átmenetileg nem ellenőrizhetők.',
+      status: 503,
+    };
+  }
+
+  if (!followsAvailabilityRules) {
     return {
       success: false,
       error: 'invalid_slot',
@@ -216,8 +244,7 @@ export async function rescheduleBooking(
     return {
       success: false,
       error: 'max_reschedules_reached',
-      message:
-        'További módosításhoz válaszolj a visszaigazoló emailre.',
+      message: 'További módosításhoz válaszolj a visszaigazoló emailre.',
       status: 403,
     };
   }
@@ -268,7 +295,8 @@ export async function rescheduleBooking(
       return {
         success: false,
         error: 'booking_changed',
-        message: 'A foglalás időközben megváltozott. Kérlek frissítsd az oldalt.',
+        message:
+          'A foglalás időközben megváltozott. Kérlek frissítsd az oldalt.',
         status: 409,
       };
     }
@@ -287,11 +315,8 @@ export async function rescheduleBooking(
   const oldSlotEnd = currentSlotEnd;
   const oldTokenExpiry = booking.management_token_expires_at;
 
-  // 12. Final freeBusy check on the new slot
-  const slotAvailable = await isSlotAvailable(newSlotStart, newSlotEnd);
-  if (!slotAvailable) {
-    // Roll back to old slot
-    await getSupabase()
+  async function rollbackReservedSlot(): Promise<boolean> {
+    const { error } = await getSupabase()
       .from('audit_bookings')
       .update({
         previous_slot_start: null,
@@ -304,14 +329,64 @@ export async function rescheduleBooking(
         management_token_expires_at: oldTokenExpiry,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', bookingId);
+      .eq('id', bookingId)
+      .eq('selected_slot_start', newSlotStart);
+
+    if (error) console.error('Reschedule availability rollback failed:', error);
+    return !error;
+  }
+
+  // 12. Final freeBusy check on the new slot
+  let slotAvailable: boolean;
+  try {
+    slotAvailable = await isSlotAvailable(newSlotStart, newSlotEnd);
+  } catch (error) {
+    console.error('Final freeBusy check failed:', error);
+    const rolledBack = await rollbackReservedSlot();
+    await trackEvent({
+      eventName: 'booking_reschedule_failed',
+      sessionId: booking.session_id,
+      bookingId,
+      metadata: {
+        reason: rolledBack
+          ? 'availability_check_failed'
+          : 'availability_check_failed_rollback_failed',
+      },
+    });
+
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message: rolledBack
+        ? 'Az új időpont most nem ellenőrizhető. Az eredeti foglalás változatlan maradt.'
+        : 'A naptár ellenőrzése sikertelen volt. Kérlek válaszolj a visszaigazoló emailre.',
+      status: 503,
+    };
+  }
+
+  if (!slotAvailable) {
+    const rolledBack = await rollbackReservedSlot();
 
     await trackEvent({
       eventName: 'booking_reschedule_failed',
       sessionId: booking.session_id,
       bookingId,
-      metadata: { reason: 'freebusy_conflict' },
+      metadata: {
+        reason: rolledBack
+          ? 'freebusy_conflict'
+          : 'freebusy_conflict_rollback_failed',
+      },
     });
+
+    if (!rolledBack) {
+      return {
+        success: false,
+        error: 'calendar_sync_failed',
+        message:
+          'Az időpontütközés kezelése nem fejeződött be. Kérlek válaszolj a visszaigazoló emailre.',
+        status: 500,
+      };
+    }
 
     return {
       success: false,
@@ -413,7 +488,10 @@ export async function rescheduleBooking(
   };
 
   // On unverified/rollback-failed, keep the new slot but mark sync failed
-  await getSupabase().from('audit_bookings').update(dbUpdate).eq('id', bookingId);
+  await getSupabase()
+    .from('audit_bookings')
+    .update(dbUpdate)
+    .eq('id', bookingId);
 
   if (finalCalendarStatus === 'failed') {
     await trackEvent({
