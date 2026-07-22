@@ -30,7 +30,6 @@ AS $$
 DECLARE
   v_schedule_id        uuid;
   v_service_id         uuid;
-  v_service_count      int;
   v_sched_name         text;
   v_sched_tz           text;
   v_sched_active       boolean;
@@ -179,6 +178,44 @@ BEGIN
       USING ERRCODE = 'P0001';
   END IF;
 
+  -- === 10.4b Lock and verify the linked booking service ====================
+  -- One active localup_audit service must belong to the locked schedule.
+  -- The cursor FOR UPDATE locks the matching row(s) so the count/check
+  -- and the subsequent UPDATE are concurrency-safe.
+  DECLARE
+    svc_cursor CURSOR FOR
+      SELECT bs.id
+      FROM public.booking_services bs
+      JOIN public.sites s ON s.id = bs.site_id
+      WHERE bs.schedule_id = v_schedule_id
+        AND s.slug = 'localup'
+        AND bs.slug = 'localup_audit'
+        AND bs.is_active = true
+        AND s.is_active = true
+      FOR UPDATE OF bs;
+    svc_row record;
+  BEGIN
+    OPEN svc_cursor;
+    FETCH svc_cursor INTO svc_row;
+
+    IF NOT FOUND THEN
+      CLOSE svc_cursor;
+      RAISE EXCEPTION 'availability: no active localup_audit booking service linked to schedule %', v_schedule_id
+        USING ERRCODE = 'P0001';
+    END IF;
+
+    v_service_id := svc_row.id;
+    FETCH svc_cursor INTO svc_row;
+
+    IF FOUND THEN
+      CLOSE svc_cursor;
+      RAISE EXCEPTION 'availability: multiple localup_audit booking services linked to schedule %', v_schedule_id
+        USING ERRCODE = 'P0001';
+    END IF;
+
+    CLOSE svc_cursor;
+  END;
+
   -- === 10.5 Update schedule row (CHECK constraints raise on bad values) ====
   UPDATE public.availability_schedules
   SET
@@ -194,32 +231,6 @@ BEGIN
   WHERE id = v_schedule_id;
 
   -- === 10.5b Sync linked booking service ===================================
-  SELECT count(*) INTO v_service_count
-  FROM public.booking_services bs
-  JOIN public.sites s ON s.id = bs.site_id
-  WHERE bs.schedule_id = v_schedule_id
-    AND s.slug = 'localup'
-    AND bs.slug = 'localup_audit'
-    AND bs.is_active = true
-    AND s.is_active = true;
-
-  IF v_service_count = 0 THEN
-    RAISE EXCEPTION 'availability: no active localup_audit booking service linked to schedule %', v_schedule_id
-      USING ERRCODE = 'P0001';
-  ELSIF v_service_count > 1 THEN
-    RAISE EXCEPTION 'availability: multiple localup_audit booking services linked to schedule %', v_schedule_id
-      USING ERRCODE = 'P0001';
-  END IF;
-
-  SELECT bs.id INTO v_service_id
-  FROM public.booking_services bs
-  JOIN public.sites s ON s.id = bs.site_id
-  WHERE bs.schedule_id = v_schedule_id
-    AND s.slug = 'localup'
-    AND bs.slug = 'localup_audit'
-    AND bs.is_active = true
-    AND s.is_active = true;
-
   UPDATE public.booking_services
   SET
     duration_minutes         = v_slot_dur,

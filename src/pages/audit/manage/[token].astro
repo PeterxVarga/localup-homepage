@@ -18,15 +18,21 @@ Astro.response.headers.set('Referrer-Policy', 'no-referrer');
 Astro.response.headers.set('X-Robots-Tag', 'noindex, nofollow, noarchive');
 
 let notFound = false;
+let serviceUnavailable = false;
 let details: import('../../../components/audit/ManageBookingClient').ManageBookingClientProps['details'] | null = null;
 
 if (!token) {
   notFound = true;
 } else {
   const result = await getManageBookingDetails(token);
-  if (!result.found || result.details.isExpired) {
+  if (result.status === 'service_unavailable') {
+    serviceUnavailable = true;
+  } else if (
+    result.status === 'not_found' ||
+    (result.status === 'found' && result.details.isExpired)
+  ) {
     notFound = true;
-  } else {
+  } else if (result.status === 'found') {
     const d = result.details;
     details = {
       bookingId: d.bookingId,
@@ -53,7 +59,16 @@ if (!token) {
   <main class="min-h-screen bg-bg-cream">
     <section class="py-[80px] md:py-[120px]">
       <div class="max-w-[640px] mx-auto px-[20px]">
-        {notFound || !details ? (
+        {serviceUnavailable ? (
+          <div class="bg-white border border-border-subtle rounded-[24px] p-[32px] md:p-[48px] shadow-card">
+            <h1 class="font-medium text-[28px] md:text-[36px] leading-[1.1] tracking-[-0.5px] text-text-primary mb-[16px]">
+              Szolgáltatás átmenetileg nem elérhető
+            </h1>
+            <p class="text-[16px] text-text-secondary leading-relaxed">
+              A foglalási adatokat jelenleg nem sikerült betölteni. Kérlek próbáld újra néhány perc múlva.
+            </p>
+          </div>
+        ) : notFound || !details ? (
           <div class="bg-white border border-border-subtle rounded-[24px] p-[32px] md:p-[48px] shadow-card">
             <h1 class="font-medium text-[28px] md:text-[36px] leading-[1.1] tracking-[-0.5px] text-text-primary mb-[16px]">
               Link not found

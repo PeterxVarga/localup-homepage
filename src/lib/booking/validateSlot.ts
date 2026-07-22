@@ -28,8 +28,8 @@ export async function isSlotValidAccordingToRules(
     return false;
   }
 
-  const dateKey = formatAvailabilityDate(start);
-  if (formatAvailabilityDate(end) !== dateKey) return false;
+  const dateKey = formatAvailabilityDate(start, service.timezone);
+  if (formatAvailabilityDate(end, service.timezone) !== dateKey) return false;
 
   const bundle = await getAvailabilityBundle(service.scheduleId, dateKey, dateKey);
   return generateCandidateSlots(bundle, service, now).some((day) =>

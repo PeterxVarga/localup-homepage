@@ -77,7 +77,7 @@ export const POST: APIRoute = async ({ request }) => {
   // Log results and track failures, but never fail the cancellation itself.
   if (!result.alreadyCancelled) {
     const lookup = await getManageBookingDetails(token);
-    if (lookup.found) {
+    if (lookup.status === 'found') {
       const d = lookup.details;
       const emailParams = {
         bookingId: d.bookingId,
@@ -123,13 +123,16 @@ export const POST: APIRoute = async ({ request }) => {
         });
       }
     } else {
-      console.error('Manage lookup failed after successful cancellation');
+      const reason =
+        lookup.status === 'service_unavailable'
+          ? 'service_unavailable_after_cancel'
+          : 'manage_lookup_failed_after_cancel';
+      console.error('Manage lookup failed after successful cancellation:', reason);
       await trackEvent({
         eventName: 'cancellation_email_failed',
         sessionId: '',
-        bookingId: result.success ? undefined : undefined,
         metadata: {
-          reason: 'manage_lookup_failed_after_cancel',
+          reason,
           calendarDeleted: result.calendarDeleted,
         },
       });

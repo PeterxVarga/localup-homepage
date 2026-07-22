@@ -11,6 +11,7 @@ import type {
 import {
   formatAvailabilityDate,
   formatAvailabilityDayName,
+  getIsoWeekday,
   wallClockToUtc,
 } from '../availability/timezone';
 import { getSupabase } from '../supabase';
@@ -41,9 +42,8 @@ export function addDateKeyDays(dateKey: string, days: number): string {
 }
 
 /** Monday=0 ... Sunday=6, matching the database contract. */
-function weekdayForDateKey(dateKey: string): number {
-  const sundayBased = new Date(`${dateKey}T12:00:00.000Z`).getUTCDay();
-  return (sundayBased + 6) % 7;
+function weekdayForDateKey(dateKey: string, timezone: string): number {
+  return getIsoWeekday(`${dateKey}T12:00:00`, timezone);
 }
 
 function intervalsForDate(
@@ -61,7 +61,7 @@ function intervalsForDate(
     }));
   }
 
-  const weekday = weekdayForDateKey(dateKey);
+  const weekday = weekdayForDateKey(dateKey, bundle.schedule.timezone);
   return bundle.weeklyRules
     .filter((rule: AvailabilityWeeklyRule) => rule.weekday === weekday)
     .map((rule) => ({
@@ -90,7 +90,7 @@ export function generateCandidateSlots(
   const minimumStart = new Date(
     now.getTime() + service.minimumNoticeMinutes * MINUTE_MS,
   );
-  const today = formatAvailabilityDate(now);
+  const today = formatAvailabilityDate(now, service.timezone);
   const days: DaySlots[] = [];
 
   for (let offset = 0; offset <= service.bookingWindowDays; offset += 1) {
@@ -98,8 +98,16 @@ export function generateCandidateSlots(
     const slots: TimeSlot[] = [];
 
     for (const interval of intervalsForDate(dateKey, bundle)) {
-      const intervalStart = wallClockToUtc(dateKey, interval.startTime);
-      const intervalEnd = wallClockToUtc(dateKey, interval.endTime);
+      const intervalStart = wallClockToUtc(
+        dateKey,
+        interval.startTime,
+        service.timezone,
+      );
+      const intervalEnd = wallClockToUtc(
+        dateKey,
+        interval.endTime,
+        service.timezone,
+      );
 
       for (
         let startMs = intervalStart.getTime();
@@ -121,7 +129,7 @@ export function generateCandidateSlots(
     if (slots.length > 0) {
       days.push({
         date: dateKey,
-        dayName: formatAvailabilityDayName(slots[0].start),
+        dayName: formatAvailabilityDayName(slots[0].start, service.timezone),
         slots,
       });
     }
@@ -157,7 +165,7 @@ export async function generateAvailableSlots(
   freeBusyCheck?: FreeBusyCheck,
   now = new Date(),
 ): Promise<DaySlots[]> {
-  const today = formatAvailabilityDate(now);
+  const today = formatAvailabilityDate(now, service.timezone);
   const endDate = addDateKeyDays(today, service.bookingWindowDays);
   const bundle = await getAvailabilityBundle(service.scheduleId, today, endDate);
   const candidates = generateCandidateSlots(bundle, service, now);

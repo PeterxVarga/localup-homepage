@@ -2,14 +2,20 @@
 // Booking service — query layer
 //
 // Resolves the active service context for a site/service slug pair.
-// Fail-closed: missing or ambiguous data throws.
+// Tenant-aware: the site is resolved first, then the service is looked up
+// within that site. Fail-closed on missing or ambiguous data.
 // ============================================================
 
 import { getSupabase } from '../supabase';
-import type {
-  BookingServiceContext,
-} from './types';
+import type { BookingServiceContext } from './types';
 import { BookingServiceError } from './types';
+
+interface SiteRow {
+  id: string;
+  slug: string;
+  timezone: string;
+  is_active: boolean;
+}
 
 interface ServiceRow {
   id: string;
@@ -27,10 +33,9 @@ interface ServiceRow {
   max_reschedules: number;
 }
 
-interface SiteRow {
+interface ScheduleRow {
   id: string;
-  slug: string;
-  timezone: string;
+  site_id: string;
   is_active: boolean;
 }
 
@@ -68,18 +73,53 @@ function mapServiceRow(row: ServiceRow): Omit<BookingServiceContext, 'siteSlug' 
   };
 }
 
-async function loadServiceBySlug(
+async function loadSiteBySlug(siteSlug: string): Promise<SiteRow> {
+  const { data, error } = await getSupabase()
+    .from('sites')
+    .select('id, slug, timezone, is_active')
+    .eq('slug', siteSlug)
+    .eq('is_active', true)
+    .limit(2);
+
+  if (error) {
+    console.error('Failed to load site by slug:', error);
+    throw new BookingServiceError(
+      'Site lookup failed',
+      'site_lookup_failed',
+    );
+  }
+
+  if (!data || data.length === 0) {
+    throw new BookingServiceError(
+      `Active site not found: ${siteSlug}`,
+      'site_not_found',
+    );
+  }
+
+  if (data.length > 1) {
+    throw new BookingServiceError(
+      `Active site is ambiguous: ${siteSlug}`,
+      'site_ambiguous',
+    );
+  }
+
+  return data[0] as unknown as SiteRow;
+}
+
+async function loadServiceBySiteAndSlug(
+  siteId: string,
   serviceSlug: string,
 ): Promise<ServiceRow> {
   const { data, error } = await getSupabase()
     .from('booking_services')
     .select(SERVICE_FIELDS)
+    .eq('site_id', siteId)
     .eq('slug', serviceSlug)
     .eq('is_active', true)
     .limit(2);
 
   if (error) {
-    console.error('Failed to load booking service by slug:', error);
+    console.error('Failed to load booking service by site+slug:', error);
     throw new BookingServiceError(
       'Booking service lookup failed',
       'service_lookup_failed',
@@ -88,14 +128,14 @@ async function loadServiceBySlug(
 
   if (!data || data.length === 0) {
     throw new BookingServiceError(
-      `Booking service not found: ${serviceSlug}`,
+      `Booking service not found: site=${siteId}, service=${serviceSlug}`,
       'service_not_found',
     );
   }
 
   if (data.length > 1) {
     throw new BookingServiceError(
-      `Booking service is ambiguous: ${serviceSlug}`,
+      `Booking service is ambiguous: site=${siteId}, service=${serviceSlug}`,
       'service_ambiguous',
     );
   }
@@ -103,9 +143,7 @@ async function loadServiceBySlug(
   return data[0] as unknown as ServiceRow;
 }
 
-async function loadServiceById(
-  serviceId: string,
-): Promise<ServiceRow> {
+async function loadServiceById(serviceId: string): Promise<ServiceRow> {
   const { data, error } = await getSupabase()
     .from('booking_services')
     .select(SERVICE_FIELDS)
@@ -134,7 +172,6 @@ async function loadServiceById(
 async function loadSiteAndSchedule(
   siteId: string,
   scheduleId: string,
-  expectedSiteSlug?: string,
 ): Promise<{ timezone: string; siteSlug: string }> {
   const [siteRes, scheduleRes] = await Promise.all([
     getSupabase()
@@ -145,7 +182,7 @@ async function loadSiteAndSchedule(
       .maybeSingle(),
     getSupabase()
       .from('availability_schedules')
-      .select('id, is_active')
+      .select('id, site_id, is_active')
       .eq('id', scheduleId)
       .eq('is_active', true)
       .maybeSingle(),
@@ -164,26 +201,26 @@ async function loadSiteAndSchedule(
 
   if (!siteRes.data) {
     throw new BookingServiceError(
-      expectedSiteSlug
-        ? `Active site not found: id=${siteId}, slug=${expectedSiteSlug}`
-        : `Active site not found: id=${siteId}`,
+      `Active site not found: id=${siteId}`,
       'site_not_found',
     );
   }
 
   const site = siteRes.data as unknown as SiteRow;
 
-  if (expectedSiteSlug && site.slug !== expectedSiteSlug) {
-    throw new BookingServiceError(
-      `Site slug mismatch: expected ${expectedSiteSlug}, found ${site.slug}`,
-      'site_slug_mismatch',
-    );
-  }
-
   if (!scheduleRes.data) {
     throw new BookingServiceError(
       `Active schedule not found: id=${scheduleId}`,
       'schedule_not_found',
+    );
+  }
+
+  const schedule = scheduleRes.data as unknown as ScheduleRow;
+
+  if (schedule.site_id !== siteId) {
+    throw new BookingServiceError(
+      `Schedule ${scheduleId} does not belong to site ${siteId}`,
+      'schedule_site_mismatch',
     );
   }
 
@@ -193,18 +230,26 @@ async function loadSiteAndSchedule(
 /**
  * Load the active booking service context by site and service slug.
  *
- * @throws BookingServiceError if the service is missing, inactive,
+ * @throws BookingServiceError if the site/service is missing, inactive,
  *         or the relationship is ambiguous.
  */
 export async function getBookingServiceContext(
   siteSlug: string,
   serviceSlug: string,
 ): Promise<BookingServiceContext> {
-  const service = await loadServiceBySlug(serviceSlug);
+  const site = await loadSiteBySlug(siteSlug);
+  const service = await loadServiceBySiteAndSlug(site.id, serviceSlug);
+
+  if (service.site_id !== site.id) {
+    throw new BookingServiceError(
+      'Booking service does not belong to the requested site',
+      'service_site_mismatch',
+    );
+  }
+
   const { timezone, siteSlug: actualSiteSlug } = await loadSiteAndSchedule(
-    service.site_id,
+    site.id,
     service.schedule_id,
-    siteSlug,
   );
 
   return {

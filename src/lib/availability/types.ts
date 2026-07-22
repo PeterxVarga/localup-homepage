@@ -3,8 +3,6 @@
 // Mirrors supabase/migrations/008_availability_schedules.sql.
 // ============================================================
 
-export const AVAILABILITY_TIMEZONE = 'Europe/Budapest' as const;
-
 export type IsoWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type AvailabilityOverrideKind = 'unavailable' | 'custom';
 export type BusyIntervalSource = 'google_calendar' | 'booking';
