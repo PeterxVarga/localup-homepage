@@ -4,7 +4,6 @@
 
 import { getSupabase } from '../supabase';
 import {
-  AVAILABILITY_TIMEZONE,
   type AvailabilityBundle,
   type AvailabilityDateOverride,
   type AvailabilityDateOverrideInterval,
@@ -16,16 +15,11 @@ import {
 
 const SCHEDULE_FIELDS = [
   'id',
+  'site_id',
   'name',
   'timezone',
   'is_default',
   'is_active',
-  'slot_duration_minutes',
-  'slot_interval_minutes',
-  'minimum_notice_minutes',
-  'booking_window_days',
-  'buffer_before_minutes',
-  'buffer_after_minutes',
 ].join(',');
 
 const WEEKLY_RULE_FIELDS = [
@@ -55,16 +49,11 @@ const DATE_OVERRIDE_INTERVAL_FIELDS = [
 
 interface ScheduleRow {
   id: string;
+  site_id: string;
   name: string;
   timezone: string;
   is_default: boolean;
   is_active: boolean;
-  slot_duration_minutes: number;
-  slot_interval_minutes: number;
-  minimum_notice_minutes: number;
-  booking_window_days: number;
-  buffer_before_minutes: number;
-  buffer_after_minutes: number;
 }
 
 interface WeeklyRuleRow {
@@ -107,25 +96,13 @@ function normalizeTime(value: string): string {
 }
 
 function mapSchedule(row: ScheduleRow): AvailabilitySchedule {
-  if (row.timezone !== AVAILABILITY_TIMEZONE) {
-    throw new AvailabilityQueryError(
-      `Unsupported availability timezone: ${row.timezone}`,
-      'unsupported_timezone',
-    );
-  }
-
   return {
     id: row.id,
+    siteId: row.site_id,
     name: row.name,
-    timezone: AVAILABILITY_TIMEZONE,
+    timezone: row.timezone,
     isDefault: row.is_default,
     isActive: row.is_active,
-    slotDurationMinutes: row.slot_duration_minutes,
-    slotIntervalMinutes: row.slot_interval_minutes,
-    minimumNoticeMinutes: row.minimum_notice_minutes,
-    bookingWindowDays: row.booking_window_days,
-    bufferBeforeMinutes: row.buffer_before_minutes,
-    bufferAfterMinutes: row.buffer_after_minutes,
   };
 }
 
@@ -163,11 +140,13 @@ function isOverrideKind(value: string): value is AvailabilityOverrideKind {
   return value === 'unavailable' || value === 'custom';
 }
 
-export async function getDefaultAvailabilitySchedule(): Promise<AvailabilitySchedule> {
+export async function getAvailabilitySchedule(
+  scheduleId: string,
+): Promise<AvailabilitySchedule> {
   const { data, error } = await getSupabase()
     .from('availability_schedules')
     .select(SCHEDULE_FIELDS)
-    .eq('is_default', true)
+    .eq('id', scheduleId)
     .eq('is_active', true)
     .maybeSingle();
 
@@ -176,7 +155,7 @@ export async function getDefaultAvailabilitySchedule(): Promise<AvailabilitySche
   }
   if (!data) {
     throw new AvailabilityQueryError(
-      'Default availability schedule is missing',
+      'Availability schedule is missing',
       'schedule_not_found',
     );
   }
@@ -269,13 +248,14 @@ export async function getAvailabilityDateOverrides(
 }
 
 export async function getAvailabilityBundle(
+  scheduleId: string,
   dateFrom: string,
   dateTo: string,
 ): Promise<AvailabilityBundle> {
-  const schedule = await getDefaultAvailabilitySchedule();
-  const [weeklyRules, dateOverrides] = await Promise.all([
-    getAvailabilityWeeklyRules(schedule.id),
-    getAvailabilityDateOverrides(schedule.id, dateFrom, dateTo),
+  const [schedule, weeklyRules, dateOverrides] = await Promise.all([
+    getAvailabilitySchedule(scheduleId),
+    getAvailabilityWeeklyRules(scheduleId),
+    getAvailabilityDateOverrides(scheduleId, dateFrom, dateTo),
   ]);
 
   return { schedule, weeklyRules, dateOverrides };

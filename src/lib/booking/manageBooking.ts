@@ -8,6 +8,7 @@ import {
   hashManagementToken,
   decryptManagementToken,
 } from '../tokens/crypto';
+import { getBookingServiceContextById } from '../booking-service/queries';
 
 export interface ManageBookingDetails {
   bookingId: string;
@@ -75,13 +76,30 @@ export async function getManageBookingDetails(
     : null;
   const isExpired = expiresAt ? now > expiresAt : false;
 
+  let maxReschedules = 2;
+  let cancelCutoffHours = 12;
+  let rescheduleCutoffHours = 12;
+
+  if (booking.service_id) {
+    try {
+      const service = await getBookingServiceContextById(booking.service_id);
+      maxReschedules = service.maxReschedules;
+      cancelCutoffHours = service.cancelCutoffHours;
+      rescheduleCutoffHours = service.rescheduleCutoffHours;
+    } catch (err) {
+      console.error('Manage booking: failed to load service context', err);
+      // Keep the legacy defaults as a safe fallback if the service context
+      // cannot be loaded. This preserves the manage-page UI for any existing
+      // booking while the migration is being rolled out.
+    }
+  }
+
   const slotStart = new Date(booking.selected_slot_start);
-  const cutoffHours = 12;
   const cancelCutoffTime = new Date(
-    slotStart.getTime() - cutoffHours * 60 * 60 * 1000,
+    slotStart.getTime() - cancelCutoffHours * 60 * 60 * 1000,
   );
   const rescheduleCutoffTime = new Date(
-    slotStart.getTime() - cutoffHours * 60 * 60 * 1000,
+    slotStart.getTime() - rescheduleCutoffHours * 60 * 60 * 1000,
   );
 
   return {
@@ -99,7 +117,7 @@ export async function getManageBookingDetails(
       cancelCutoffPassed: now > cancelCutoffTime,
       rescheduleCutoffPassed: now > rescheduleCutoffTime,
       rescheduleCount: booking.reschedule_count,
-      maxReschedules: 2,
+      maxReschedules,
     },
   };
 }
