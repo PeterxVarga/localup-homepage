@@ -1,13 +1,11 @@
 // ============================================================
-// Slot validation against the dashboard-managed availability rules
+// Slot validation against the service-managed availability rules
 // ============================================================
 
-import {
-  getAvailabilityBundle,
-  getDefaultAvailabilitySchedule,
-} from '../availability/queries';
+import { getAvailabilityBundle } from '../availability/queries';
 import { formatAvailabilityDate } from '../availability/timezone';
 import { generateCandidateSlots } from './generateSlots';
+import type { BookingServiceContext } from '../booking-service/types';
 
 /**
  * Validate duration, notice, horizon, weekday/custom override and grid
@@ -17,6 +15,7 @@ import { generateCandidateSlots } from './generateSlots';
 export async function isSlotValidAccordingToRules(
   slotStart: string,
   slotEnd: string,
+  service: BookingServiceContext,
   now = new Date(),
 ): Promise<boolean> {
   const start = new Date(slotStart);
@@ -29,11 +28,11 @@ export async function isSlotValidAccordingToRules(
     return false;
   }
 
-  const dateKey = formatAvailabilityDate(start);
-  if (formatAvailabilityDate(end) !== dateKey) return false;
+  const dateKey = formatAvailabilityDate(start, service.timezone);
+  if (formatAvailabilityDate(end, service.timezone) !== dateKey) return false;
 
-  const bundle = await getAvailabilityBundle(dateKey, dateKey);
-  return generateCandidateSlots(bundle, now).some((day) =>
+  const bundle = await getAvailabilityBundle(service.scheduleId, dateKey, dateKey);
+  return generateCandidateSlots(bundle, service, now).some((day) =>
     day.slots.some(
       (slot) =>
         slot.start === start.toISOString() && slot.end === end.toISOString(),
@@ -41,16 +40,18 @@ export async function isSlotValidAccordingToRules(
   );
 }
 
-/** Compute the expected end using the current DB-backed slot duration. */
-export async function getExpectedSlotEnd(slotStart: string): Promise<string> {
+/** Compute the expected end using the service-configured slot duration. */
+export function getExpectedSlotEnd(
+  slotStart: string,
+  service: BookingServiceContext,
+): string {
   const start = new Date(slotStart);
   if (Number.isNaN(start.getTime())) {
     throw new RangeError('Invalid slot start');
   }
 
-  const schedule = await getDefaultAvailabilitySchedule();
   return new Date(
-    start.getTime() + schedule.slotDurationMinutes * 60_000,
+    start.getTime() + service.durationMinutes * 60_000,
   ).toISOString();
 }
 

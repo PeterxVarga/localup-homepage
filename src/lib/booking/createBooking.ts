@@ -11,6 +11,7 @@ import {
   encryptManagementToken,
 } from '../tokens/crypto';
 import { scheduleBookingReminders } from './reminderScheduling';
+import type { BookingServiceContext } from '../booking-service/types';
 
 export interface CreateBookingResult {
   success: true;
@@ -29,17 +30,20 @@ export interface CreateBookingError {
 /**
  * Insert a new booking with lifecycle and calendar-sync statuses separated.
  * The caller is responsible for:
+ *   - Resolving the booking service context
  *   - Zod validation (already done before calling this)
  *   - Google Calendar event creation (after insert)
  *   - Updating statuses after sync attempt
  */
 export async function createBooking(
   input: AuditBookingInput,
+  service: BookingServiceContext,
 ): Promise<CreateBookingResult | CreateBookingError> {
-  // 1. Re-check slot availability (race condition protection)
+  // 1. Re-check slot availability (race condition protection), scoped to site.
   const { data: conflict } = await getSupabase()
     .from('audit_bookings')
     .select('id')
+    .eq('site_id', service.siteId)
     .in('booking_status', ['pending', 'booked'])
     .eq('selected_slot_start', input.slotStart)
     .maybeSingle();
@@ -61,12 +65,14 @@ export async function createBooking(
     new Date(input.slotEnd).getTime() + 30 * 24 * 60 * 60 * 1000,
   ).toISOString();
 
-  // 3. Insert booking
+  // 3. Insert booking with explicit site/service links.
   //    Business logic uses only booking_status and calendar_sync_status.
   //    The legacy `status` column is kept in sync by the DB bridge trigger.
   const { data: booking, error: insertError } = await getSupabase()
     .from('audit_bookings')
     .insert({
+      site_id: service.siteId,
+      service_id: service.serviceId,
       business_name: input.businessName,
       website_url: input.websiteUrl || null,
       no_website: input.noWebsite,
@@ -164,5 +170,3 @@ export async function getBookingByTokenHash(tokenHash: string) {
     .maybeSingle();
   return data;
 }
-
-

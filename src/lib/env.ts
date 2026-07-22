@@ -53,10 +53,12 @@ export const env = {
   // Booking management token encryption (32 bytes as 64 hex chars)
   bookingTokenEncryptionKey: read('BOOKING_TOKEN_ENCRYPTION_KEY'),
 
-  // Cancel / reschedule cutoff hours
-  auditCancelCutoffHours: parseInt(read('AUDIT_CANCEL_CUTOFF_HOURS') ?? '12', 10),
-  auditRescheduleCutoffHours: parseInt(read('AUDIT_RESCHEDULE_CUTOFF_HOURS') ?? '12', 10),
-  auditMaxReschedules: parseInt(read('AUDIT_MAX_RESCHEDULES') ?? '2', 10),
+  // Booking timing values (duration, interval, buffers, notice, window) and
+  // cancel/reschedule policies are now stored in the booking_services table
+  // and loaded at runtime via getBookingServiceContext().
+  // The legacy AUDIT_CANCEL_CUTOFF_HOURS, AUDIT_RESCHEDULE_CUTOFF_HOURS and
+  // AUDIT_MAX_RESCHEDULES env vars were removed because they are no longer
+  // the source of truth; keeping them would create a silent divergence risk.
 
   // Reminder cron secret (must match Supabase Vault secret 'reminder_cron_secret')
   reminderCronSecret: read('REMINDER_CRON_SECRET'),

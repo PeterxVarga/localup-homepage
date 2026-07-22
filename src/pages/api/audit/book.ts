@@ -17,6 +17,11 @@ import {
   getAggregatedFreeBusy,
 } from '../../../lib/calendar/syncBookingToCalendar';
 import { generateAvailableSlots } from '../../../lib/booking/generateSlots';
+import { getBookingServiceContext } from '../../../lib/booking-service/queries';
+import {
+  LOCALUP_SITE_SLUG,
+  LOCALUP_AUDIT_SERVICE_SLUG,
+} from '../../../lib/booking-service/constants';
 import { sendBookingConfirmation } from '../../../lib/email/sendBookingConfirmation';
 import { sendAdminNotification } from '../../../lib/email/sendAdminNotification';
 import {
@@ -103,6 +108,24 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
+  let service;
+  try {
+    service = await getBookingServiceContext(
+      LOCALUP_SITE_SLUG,
+      LOCALUP_AUDIT_SERVICE_SLUG,
+    );
+  } catch (err) {
+    console.error('booking service context error:', err);
+    return jsonResponse(
+      {
+        success: false,
+        error: 'service_unavailable',
+        message: 'Booking service is not configured',
+      },
+      503,
+    );
+  }
+
   // Track: booking submitted
   await trackEvent({
     eventName: 'audit_booking_submitted',
@@ -118,7 +141,7 @@ export const POST: APIRoute = async ({ request }) => {
   try {
     const requestedStart = new Date(input.slotStart).toISOString();
     const requestedEnd = new Date(input.slotEnd).toISOString();
-    const availableDays = await generateAvailableSlots(getAggregatedFreeBusy);
+    const availableDays = await generateAvailableSlots(service, getAggregatedFreeBusy);
     const available = availableDays.some((day) =>
       day.slots.some(
         (slot) => slot.start === requestedStart && slot.end === requestedEnd,
@@ -155,7 +178,7 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // 2. Insert booking (DB-level race condition protection via unique index)
-  const result = await createBooking(input);
+  const result = await createBooking(input, service);
   if (!result.success) {
     return jsonResponse(result, result.error === 'slot_taken' ? 409 : 500);
   }

@@ -4,11 +4,11 @@
 // ============================================================
 
 import { getSupabase } from '../supabase';
-import { env } from '../env';
 import { hashManagementToken } from '../tokens/crypto';
 import { googleCalendarProvider } from '../calendar/provider/google';
 import { trackEvent } from './trackEvent';
 import { cancelBookingReminders } from './reminderScheduling';
+import { getBookingServiceContextById } from '../booking-service/queries';
 
 export interface CancelBookingResult {
   success: true;
@@ -192,13 +192,33 @@ export async function cancelBooking(
     };
   }
 
+  // 2b. Load service context for cancel policy.
+  if (!booking.service_id) {
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message: 'A foglalási szolgáltatás nem azonosítható.',
+      status: 503,
+    };
+  }
+
+  let service;
+  try {
+    service = await getBookingServiceContextById(booking.service_id);
+  } catch (err) {
+    console.error('Cancel: failed to load service context', err);
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message: 'A foglalási szolgáltatás nem azonosítható.',
+      status: 503,
+    };
+  }
+
   // 5. Check cutoff time
   const slotStart = new Date(booking.selected_slot_start);
-  const cutoffHours = Number.isFinite(env.auditCancelCutoffHours)
-    ? env.auditCancelCutoffHours
-    : 12;
   const cutoffTime = new Date(
-    slotStart.getTime() - cutoffHours * 60 * 60 * 1000,
+    slotStart.getTime() - service.cancelCutoffHours * 60 * 60 * 1000,
   );
 
   if (now > cutoffTime) {

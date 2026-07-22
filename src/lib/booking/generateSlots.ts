@@ -1,12 +1,8 @@
 // ============================================================
-// DB-backed slot generation — Europe/Budapest wall-clock safe
+// DB-backed slot generation — service-aware, wall-clock safe
 // ============================================================
 
-import {
-  getAvailabilityDateOverrides,
-  getAvailabilityWeeklyRules,
-  getDefaultAvailabilitySchedule,
-} from '../availability/queries';
+import { getAvailabilityBundle } from '../availability/queries';
 import type {
   AvailabilityBundle,
   AvailabilityDateOverride,
@@ -15,9 +11,12 @@ import type {
 import {
   formatAvailabilityDate,
   formatAvailabilityDayName,
+  getIsoWeekday,
   wallClockToUtc,
 } from '../availability/timezone';
 import { getSupabase } from '../supabase';
+import type { BookingServiceContext } from '../booking-service/types';
+import { BookingServiceError } from '../booking-service/types';
 
 export interface TimeSlot {
   start: string;
@@ -43,9 +42,8 @@ export function addDateKeyDays(dateKey: string, days: number): string {
 }
 
 /** Monday=0 ... Sunday=6, matching the database contract. */
-function weekdayForDateKey(dateKey: string): number {
-  const sundayBased = new Date(`${dateKey}T12:00:00.000Z`).getUTCDay();
-  return (sundayBased + 6) % 7;
+function weekdayForDateKey(dateKey: string, timezone: string): number {
+  return getIsoWeekday(`${dateKey}T12:00:00`, timezone);
 }
 
 function intervalsForDate(
@@ -63,7 +61,7 @@ function intervalsForDate(
     }));
   }
 
-  const weekday = weekdayForDateKey(dateKey);
+  const weekday = weekdayForDateKey(dateKey, bundle.schedule.timezone);
   return bundle.weeklyRules
     .filter((rule: AvailabilityWeeklyRule) => rule.weekday === weekday)
     .map((rule) => ({
@@ -73,34 +71,48 @@ function intervalsForDate(
 }
 
 /**
- * Generate slots from a previously loaded availability bundle.
- * This is exported so server-side booking validation can use exactly
- * the same schedule, interval and override semantics as the public list.
+ * Generate slots from a previously loaded availability bundle and service context.
+ * This is exported so server-side booking validation can use exactly the same
+ * schedule, interval and override semantics as the public list.
  */
 export function generateCandidateSlots(
   bundle: AvailabilityBundle,
+  service: BookingServiceContext,
   now = new Date(),
 ): DaySlots[] {
-  const { schedule } = bundle;
+  if (bundle.schedule.timezone !== service.timezone) {
+    throw new BookingServiceError(
+      `Schedule timezone ${bundle.schedule.timezone} does not match service timezone ${service.timezone}`,
+      'timezone_mismatch',
+    );
+  }
+
   const minimumStart = new Date(
-    now.getTime() + schedule.minimumNoticeMinutes * MINUTE_MS,
+    now.getTime() + service.minimumNoticeMinutes * MINUTE_MS,
   );
-  const today = formatAvailabilityDate(now);
+  const today = formatAvailabilityDate(now, service.timezone);
   const days: DaySlots[] = [];
 
-  for (let offset = 0; offset <= schedule.bookingWindowDays; offset += 1) {
+  for (let offset = 0; offset <= service.bookingWindowDays; offset += 1) {
     const dateKey = addDateKeyDays(today, offset);
     const slots: TimeSlot[] = [];
 
     for (const interval of intervalsForDate(dateKey, bundle)) {
-      const intervalStart = wallClockToUtc(dateKey, interval.startTime);
-      const intervalEnd = wallClockToUtc(dateKey, interval.endTime);
+      const intervalStart = wallClockToUtc(
+        dateKey,
+        interval.startTime,
+        service.timezone,
+      );
+      const intervalEnd = wallClockToUtc(
+        dateKey,
+        interval.endTime,
+        service.timezone,
+      );
 
       for (
         let startMs = intervalStart.getTime();
-        startMs + schedule.slotDurationMinutes * MINUTE_MS <=
-        intervalEnd.getTime();
-        startMs += schedule.slotIntervalMinutes * MINUTE_MS
+        startMs + service.durationMinutes * MINUTE_MS <= intervalEnd.getTime();
+        startMs += service.slotIntervalMinutes * MINUTE_MS
       ) {
         const start = new Date(startMs);
         if (start < minimumStart) continue;
@@ -108,7 +120,7 @@ export function generateCandidateSlots(
         slots.push({
           start: start.toISOString(),
           end: new Date(
-            startMs + schedule.slotDurationMinutes * MINUTE_MS,
+            startMs + service.durationMinutes * MINUTE_MS,
           ).toISOString(),
         });
       }
@@ -117,7 +129,7 @@ export function generateCandidateSlots(
     if (slots.length > 0) {
       days.push({
         date: dateKey,
-        dayName: formatAvailabilityDayName(slots[0].start),
+        dayName: formatAvailabilityDayName(slots[0].start, service.timezone),
         slots,
       });
     }
@@ -142,29 +154,21 @@ function overlapsWithBuffer(
 }
 
 /**
- * Load the dashboard-managed schedule, then filter candidates against
- * active bookings and all configured calendar providers.
+ * Load the service-managed schedule, then filter candidates against active
+ * bookings for the same site and all configured calendar providers.
  *
  * Database and free/busy failures deliberately throw. Returning an empty
  * or partial busy list would expose slots that cannot be verified safely.
  */
 export async function generateAvailableSlots(
+  service: BookingServiceContext,
   freeBusyCheck?: FreeBusyCheck,
   now = new Date(),
 ): Promise<DaySlots[]> {
-  const today = formatAvailabilityDate(now);
-  const schedule = await getDefaultAvailabilitySchedule();
-  const endDate = addDateKeyDays(today, schedule.bookingWindowDays);
-  const [weeklyRules, dateOverrides] = await Promise.all([
-    getAvailabilityWeeklyRules(schedule.id),
-    getAvailabilityDateOverrides(schedule.id, today, endDate),
-  ]);
-  const bundle: AvailabilityBundle = {
-    schedule,
-    weeklyRules,
-    dateOverrides,
-  };
-  const candidates = generateCandidateSlots(bundle, now);
+  const today = formatAvailabilityDate(now, service.timezone);
+  const endDate = addDateKeyDays(today, service.bookingWindowDays);
+  const bundle = await getAvailabilityBundle(service.scheduleId, today, endDate);
+  const candidates = generateCandidateSlots(bundle, service, now);
   const flatCandidates = candidates.flatMap((day) => day.slots);
 
   if (flatCandidates.length === 0) return [];
@@ -172,17 +176,16 @@ export async function generateAvailableSlots(
   const firstStart = flatCandidates[0].start;
   const lastEnd = flatCandidates[flatCandidates.length - 1].end;
   const queryStart = new Date(
-    new Date(firstStart).getTime() -
-      bundle.schedule.bufferBeforeMinutes * MINUTE_MS,
+    new Date(firstStart).getTime() - service.bufferBeforeMinutes * MINUTE_MS,
   ).toISOString();
   const queryEnd = new Date(
-    new Date(lastEnd).getTime() +
-      bundle.schedule.bufferAfterMinutes * MINUTE_MS,
+    new Date(lastEnd).getTime() + service.bufferAfterMinutes * MINUTE_MS,
   ).toISOString();
 
   const { data: bookedData, error: bookedError } = await getSupabase()
     .from('audit_bookings')
     .select('selected_slot_start, selected_slot_end')
+    .eq('site_id', service.siteId)
     .in('booking_status', ['pending', 'booked'])
     .lt('selected_slot_start', queryEnd)
     .gt('selected_slot_end', queryStart);
@@ -210,8 +213,8 @@ export async function generateAvailableSlots(
             overlapsWithBuffer(
               slot,
               busy,
-              bundle.schedule.bufferBeforeMinutes,
-              bundle.schedule.bufferAfterMinutes,
+              service.bufferBeforeMinutes,
+              service.bufferAfterMinutes,
             ),
           ),
       ),

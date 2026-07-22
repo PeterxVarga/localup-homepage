@@ -5,12 +5,12 @@
 // ============================================================
 
 import { getSupabase } from '../supabase';
-import { env } from '../env';
 import { hashManagementToken, decryptManagementToken } from '../tokens/crypto';
 import { googleCalendarProvider } from '../calendar/provider/google';
 import { isSlotAvailable } from '../calendar/syncBookingToCalendar';
 import { trackEvent } from './trackEvent';
 import { rescheduleBookingReminders } from './reminderScheduling';
+import { getBookingServiceContextById } from '../booking-service/queries';
 import {
   isSlotValidAccordingToRules,
   getExpectedSlotEnd,
@@ -49,11 +49,8 @@ export interface RescheduleBookingError {
 export type RescheduleBookingResult =
   RescheduleBookingSuccess | RescheduleBookingError;
 
-function getCutoffTime(slotStart: string): Date {
+function getCutoffTime(slotStart: string, cutoffHours: number): Date {
   const start = new Date(slotStart);
-  const cutoffHours = Number.isFinite(env.auditRescheduleCutoffHours)
-    ? env.auditRescheduleCutoffHours
-    : 12;
   return new Date(start.getTime() - cutoffHours * 60 * 60 * 1000);
 }
 
@@ -140,13 +137,35 @@ export async function rescheduleBooking(
     };
   }
 
-  // 4. Check booking state
+  // 4. Check booking state and load service context.
   if (booking.booking_status !== 'booked') {
     return {
       success: false,
       error: 'invalid_state',
       message: 'Ezt a foglalást nem lehet módosítani.',
       status: 409,
+    };
+  }
+
+  if (!booking.service_id) {
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message: 'A foglalási szolgáltatás nem azonosítható.',
+      status: 503,
+    };
+  }
+
+  let service;
+  try {
+    service = await getBookingServiceContextById(booking.service_id);
+  } catch (err) {
+    console.error('Reschedule: failed to load service context', err);
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message: 'A foglalási szolgáltatás nem azonosítható.',
+      status: 503,
     };
   }
 
@@ -169,7 +188,7 @@ export async function rescheduleBooking(
 
   let newSlotEnd: string;
   try {
-    newSlotEnd = await getExpectedSlotEnd(newSlotStart);
+    newSlotEnd = getExpectedSlotEnd(newSlotStart, service);
   } catch (error) {
     console.error('Availability schedule lookup failed:', error);
     return {
@@ -205,6 +224,7 @@ export async function rescheduleBooking(
     followsAvailabilityRules = await isSlotValidAccordingToRules(
       newSlotStart,
       newSlotEnd,
+      service,
     );
   } catch (error) {
     console.error('Availability rule validation failed:', error);
@@ -226,7 +246,7 @@ export async function rescheduleBooking(
   }
 
   // 8. Check reschedule cutoff
-  if (now > getCutoffTime(currentSlotStart)) {
+  if (now > getCutoffTime(currentSlotStart, service.rescheduleCutoffHours)) {
     return {
       success: false,
       error: 'cutoff_passed',
@@ -237,10 +257,7 @@ export async function rescheduleBooking(
   }
 
   // 9. Check max reschedules
-  const maxReschedules = Number.isFinite(env.auditMaxReschedules)
-    ? env.auditMaxReschedules
-    : 2;
-  if (booking.reschedule_count >= maxReschedules) {
+  if (booking.reschedule_count >= service.maxReschedules) {
     return {
       success: false,
       error: 'max_reschedules_reached',

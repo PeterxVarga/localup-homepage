@@ -7,6 +7,11 @@ import type { APIRoute } from 'astro';
 import { isSupabaseConfigured } from '../../../lib/supabase';
 import { generateAvailableSlots } from '../../../lib/booking/generateSlots';
 import { getAggregatedFreeBusy } from '../../../lib/calendar/syncBookingToCalendar';
+import { getBookingServiceContext } from '../../../lib/booking-service/queries';
+import {
+  LOCALUP_SITE_SLUG,
+  LOCALUP_AUDIT_SERVICE_SLUG,
+} from '../../../lib/booking-service/constants';
 
 export const GET: APIRoute = async () => {
   try {
@@ -19,7 +24,11 @@ export const GET: APIRoute = async () => {
       );
     }
 
-    const slots = await generateAvailableSlots(getAggregatedFreeBusy);
+    const service = await getBookingServiceContext(
+      LOCALUP_SITE_SLUG,
+      LOCALUP_AUDIT_SERVICE_SLUG,
+    );
+    const slots = await generateAvailableSlots(service, getAggregatedFreeBusy);
 
     return new Response(JSON.stringify({ slots }), {
       status: 200,

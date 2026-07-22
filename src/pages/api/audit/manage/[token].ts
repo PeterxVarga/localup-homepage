@@ -43,8 +43,20 @@ export const GET: APIRoute = async ({ params, request }) => {
 
   const result = await getManageBookingDetails(rawToken);
 
-  if (!result.found) {
+  if (result.status === 'not_found') {
     return jsonResponse({ success: false, error: 'not_found' }, 404);
+  }
+
+  if (result.status === 'service_unavailable') {
+    return jsonResponse(
+      {
+        success: false,
+        error: 'service_unavailable',
+        message:
+          'A foglalási adatok átmenetileg nem érhetők el. Kérlek próbáld újra később.',
+      },
+      503,
+    );
   }
 
   const d = result.details;

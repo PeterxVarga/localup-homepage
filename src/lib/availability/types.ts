@@ -3,24 +3,24 @@
 // Mirrors supabase/migrations/008_availability_schedules.sql.
 // ============================================================
 
-export const AVAILABILITY_TIMEZONE = 'Europe/Budapest' as const;
-
 export type IsoWeekday = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 export type AvailabilityOverrideKind = 'unavailable' | 'custom';
 export type BusyIntervalSource = 'google_calendar' | 'booking';
 
+/**
+ * Availability schedule identity.
+ *
+ * Timing fields (duration, interval, notice, window, buffers) are runtime
+ * configuration on the booking service, not the schedule. They remain in the
+ * database table for backward compatibility but are not used here.
+ */
 export interface AvailabilitySchedule {
   id: string;
+  siteId: string;
   name: string;
-  timezone: typeof AVAILABILITY_TIMEZONE;
+  timezone: string;
   isDefault: boolean;
   isActive: boolean;
-  slotDurationMinutes: number;
-  slotIntervalMinutes: number;
-  minimumNoticeMinutes: number;
-  bookingWindowDays: number;
-  bufferBeforeMinutes: number;
-  bufferAfterMinutes: number;
 }
 
 export interface AvailabilityWeeklyRule {
@@ -74,6 +74,6 @@ export interface AvailabilityDaySlots {
 }
 
 export interface AvailableSlotsResult {
-  timezone: typeof AVAILABILITY_TIMEZONE;
+  timezone: string;
   days: AvailabilityDaySlots[];
 }
