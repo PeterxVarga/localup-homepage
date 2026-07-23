@@ -12,6 +12,10 @@
 
 import crypto from 'crypto';
 import { env } from '../env';
+import {
+  encryptCredential as encryptCredentialCore,
+  decryptCredential as decryptCredentialCore,
+} from './credentialCrypto';
 
 const TOKEN_BYTES = 32;
 const TOKEN_PREFIX = 'v1';
@@ -55,7 +59,10 @@ export function encryptManagementToken(plaintext: string): string {
   const key = getKey();
   const iv = crypto.randomBytes(IV_LEN);
   const cipher = crypto.createCipheriv(ALGO, key, iv);
-  const encrypted = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const encrypted = Buffer.concat([
+    cipher.update(plaintext, 'utf8'),
+    cipher.final(),
+  ]);
   const tag = cipher.getAuthTag();
 
   return [
@@ -100,4 +107,40 @@ export function verifyManagementToken(
   } catch {
     return false;
   }
+}
+
+// ============================================================
+// Generic credential encryption (reuses the same key and AEAD
+// format as management tokens, but with distinct function names
+// so callers do not confuse tenant credentials with URLs/tokens).
+// ============================================================
+
+/** Encrypt an arbitrary tenant credential for database storage. */
+export function encryptCredential(plaintext: string): string {
+  return encryptCredentialCore(plaintext, getKeyHex());
+}
+
+/** Decrypt a stored tenant credential. */
+export function decryptCredential(ciphertext: string): string {
+  return decryptCredentialCore(ciphertext, getKeyHex());
+}
+
+/** Return the configured key as a hex string (used by credentialCrypto). */
+function getKeyHex(): string {
+  const key = env.bookingTokenEncryptionKey;
+  if (!key) {
+    throw new Error('BOOKING_TOKEN_ENCRYPTION_KEY is not configured');
+  }
+
+  if (key.length === 64) {
+    return key;
+  }
+
+  if (key.length === 44) {
+    return Buffer.from(key, 'base64').toString('hex');
+  }
+
+  throw new Error(
+    'BOOKING_TOKEN_ENCRYPTION_KEY must be 64 hex chars or 44 base64 chars',
+  );
 }

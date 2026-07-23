@@ -10,7 +10,10 @@ import type { APIRoute } from 'astro';
 import { isSupabaseConfigured } from '../../../../../lib/supabase';
 import { generateAvailableSlots } from '../../../../../lib/booking/generateSlots';
 import { getBookingServiceContext } from '../../../../../lib/booking-service/queries';
-import { resolveGenericAvailabilityProvider } from '../../../../../lib/calendar/genericAvailabilityProvider';
+import {
+  resolveGenericAvailabilityProvider,
+  bindGetFreeBusy,
+} from '../../../../../lib/calendar/genericAvailabilityProvider';
 
 export const GET: APIRoute = async ({ params }) => {
   const siteSlug = typeof params.siteSlug === 'string' ? params.siteSlug : '';
@@ -46,7 +49,7 @@ export const GET: APIRoute = async ({ params }) => {
     );
     const slots = await generateAvailableSlots(
       service,
-      (timeMin, timeMax) => provider.getFreeBusy(timeMin, timeMax),
+      bindGetFreeBusy(provider),
     );
 
     return new Response(JSON.stringify({ slots }), {
