@@ -154,6 +154,15 @@ function overlapsWithBuffer(
 }
 
 /**
+ * Plain half-open interval overlap. Used for busy intervals that already
+ * include the full blocked range (e.g. generic bookings) so the buffer is not
+ * counted twice.
+ */
+function overlaps(slot: TimeSlot, busy: BusySlot): boolean {
+  return slot.start < busy.end && slot.end > busy.start;
+}
+
+/**
  * Load the service-managed schedule, then filter candidates against active
  * bookings for the same site and all configured calendar providers.
  *
@@ -182,34 +191,60 @@ export async function generateAvailableSlots(
     new Date(lastEnd).getTime() + service.bufferAfterMinutes * MINUTE_MS,
   ).toISOString();
 
-  const { data: bookedData, error: bookedError } = await getSupabase()
-    .from('audit_bookings')
-    .select('selected_slot_start, selected_slot_end')
-    .eq('site_id', service.siteId)
-    .in('booking_status', ['pending', 'booked'])
-    .lt('selected_slot_start', queryEnd)
-    .gt('selected_slot_end', queryStart);
+  const [auditBookingsRes, genericBookingsRes] = await Promise.all([
+    getSupabase()
+      .from('audit_bookings')
+      .select('selected_slot_start, selected_slot_end')
+      .eq('site_id', service.siteId)
+      .in('booking_status', ['pending', 'booked'])
+      .lt('selected_slot_start', queryEnd)
+      .gt('selected_slot_end', queryStart),
+    getSupabase()
+      .from('bookings')
+      .select('blocked_start, blocked_end')
+      .eq('site_id', service.siteId)
+      .in('booking_status', ['pending', 'booked'])
+      .lt('blocked_start', queryEnd)
+      .gt('blocked_end', queryStart),
+  ]);
 
-  if (bookedError) {
+  if (auditBookingsRes.error || genericBookingsRes.error) {
     throw new Error('Failed to verify booked slots');
   }
 
-  const bookedSlots: BusySlot[] = (bookedData ?? []).map((booking) => ({
-    start: booking.selected_slot_start,
-    end: booking.selected_slot_end,
-  }));
+  const auditBusy: BusySlot[] = (auditBookingsRes.data ?? []).map(
+    (booking) => ({
+      start: booking.selected_slot_start,
+      end: booking.selected_slot_end,
+    }),
+  );
+
+  const genericBusy: BusySlot[] = (genericBookingsRes.data ?? []).map(
+    (booking) => ({
+      start: booking.blocked_start,
+      end: booking.blocked_end,
+    }),
+  );
 
   const calendarBusy = freeBusyCheck
     ? await freeBusyCheck(queryStart, queryEnd)
     : [];
-  const busySlots = [...bookedSlots, ...calendarBusy];
 
   return candidates
     .map((day) => ({
       ...day,
       slots: day.slots.filter(
         (slot) =>
-          !busySlots.some((busy) =>
+          !auditBusy.some((busy) =>
+            overlapsWithBuffer(
+              slot,
+              busy,
+              service.bufferBeforeMinutes,
+              service.bufferAfterMinutes,
+            ),
+          ) &&
+          !genericBusy.some((busy) => overlaps(slot, busy)) &&
+          !calendarBusy.some((busy) =>
             overlapsWithBuffer(
               slot,
               busy,

@@ -5,6 +5,7 @@
 import { getAvailabilityBundle } from '../availability/queries';
 import { formatAvailabilityDate } from '../availability/timezone';
 import { generateCandidateSlots } from './generateSlots';
+import { getExpectedSlotEnd as getExpectedSlotEndFromDuration } from './intervals';
 import type { BookingServiceContext } from '../booking-service/types';
 
 /**
@@ -45,14 +46,7 @@ export function getExpectedSlotEnd(
   slotStart: string,
   service: BookingServiceContext,
 ): string {
-  const start = new Date(slotStart);
-  if (Number.isNaN(start.getTime())) {
-    throw new RangeError('Invalid slot start');
-  }
-
-  return new Date(
-    start.getTime() + service.durationMinutes * 60_000,
-  ).toISOString();
+  return getExpectedSlotEndFromDuration(slotStart, service.durationMinutes);
 }
 
 export function isSameSlot(
