@@ -16,6 +16,7 @@ import {
   type CalendarConfig,
   type GenericAvailabilityProvider,
   GenericAvailabilityProviderError,
+  parseFreeBusyResponse,
   resolveGenericAvailabilityProvider as resolveGenericAvailabilityProviderCore,
 } from './genericAvailabilityResolver';
 import type { BusySlot } from './types';
@@ -43,6 +44,7 @@ async function loadSiteCalendarConfigs(siteId: string): Promise<CalendarConfig[]
       'id, site_id, provider, calendar_id, encrypted_refresh_token, is_active',
     )
     .eq('site_id', siteId)
+    .eq('provider', 'google')
     .eq('is_active', true);
 
   if (error) {
@@ -74,12 +76,19 @@ async function buildGoogleProvider(
 
   let refreshToken: string;
   try {
-    refreshToken = decryptCredential(config.encryptedRefreshToken);
+    refreshToken = decryptCredential(config.encryptedRefreshToken).trim();
   } catch (err) {
     console.error('Failed to decrypt tenant refresh token:', err);
     throw new GenericAvailabilityProviderError(
       'Failed to decrypt calendar credentials',
       'provider_decrypt_failed',
+    );
+  }
+
+  if (refreshToken === '') {
+    throw new GenericAvailabilityProviderError(
+      'Calendar credentials are missing after decryption',
+      'provider_credentials_missing',
     );
   }
 
@@ -101,16 +110,9 @@ async function buildGoogleProvider(
         },
       });
 
-      return (res.data.calendars?.[config.calendarId]?.busy ?? []).map(
-        (busy) => {
-          if (!busy.start || !busy.end) {
-            throw new GenericAvailabilityProviderError(
-              'Calendar provider returned an invalid busy interval',
-              'provider_invalid_response',
-            );
-          }
-          return { start: busy.start, end: busy.end };
-        },
+      return parseFreeBusyResponse(
+        res.data as { calendars?: Record<string, { busy?: Array<{ start?: string; end?: string }>; errors?: Array<{ reason?: string; message?: string }> }> },
+        config.calendarId,
       );
     },
   };

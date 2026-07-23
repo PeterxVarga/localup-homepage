@@ -10,10 +10,12 @@ import assert from 'node:assert/strict';
 import {
   bindGetFreeBusy,
   GenericAvailabilityProviderError,
+  parseFreeBusyResponse,
   resolveGenericAvailabilityProvider,
 } from '../genericAvailabilityResolver.ts';
 import type {
   CalendarConfig,
+  FreeBusyResponse,
   GenericAvailabilityProvider,
   ResolverDependencies,
 } from '../genericAvailabilityResolver.ts';
@@ -140,6 +142,140 @@ describe('resolveGenericAvailabilityProvider', () => {
       (err: unknown) =>
         err instanceof GenericAvailabilityProviderError &&
         err.code === 'provider_decrypt_failed',
+    );
+  });
+});
+
+describe('parseFreeBusyResponse', () => {
+  const calendarId = 'tenant-calendar@example.com';
+
+  it('returns an empty array for a valid empty busy response', () => {
+    const response: FreeBusyResponse = {
+      calendars: {
+        [calendarId]: { busy: [] },
+      },
+    };
+    const result = parseFreeBusyResponse(response, calendarId);
+    assert.equal(result.length, 0);
+  });
+
+  it('returns valid busy intervals', () => {
+    const response: FreeBusyResponse = {
+      calendars: {
+        [calendarId]: {
+          busy: [
+            { start: '2026-01-01T10:00:00Z', end: '2026-01-01T11:00:00Z' },
+          ],
+        },
+      },
+    };
+    const result = parseFreeBusyResponse(response, calendarId);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].start, '2026-01-01T10:00:00Z');
+    assert.equal(result[0].end, '2026-01-01T11:00:00Z');
+  });
+
+  it('rejects missing calendars data', () => {
+    assert.throws(
+      () => parseFreeBusyResponse({}, calendarId),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_invalid_response',
+    );
+  });
+
+  it('rejects missing calendar ID entry', () => {
+    const response: FreeBusyResponse = {
+      calendars: {
+        'other-calendar@example.com': { busy: [] },
+      },
+    };
+    assert.throws(
+      () => parseFreeBusyResponse(response, calendarId),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_invalid_response',
+    );
+  });
+
+  it('rejects per-calendar errors', () => {
+    const response: FreeBusyResponse = {
+      calendars: {
+        [calendarId]: {
+          busy: [],
+          errors: [{ reason: 'notFound' }],
+        },
+      },
+    };
+    assert.throws(
+      () => parseFreeBusyResponse(response, calendarId),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_calendar_error',
+    );
+  });
+
+  it('rejects busy entries missing start or end', () => {
+    const response: FreeBusyResponse = {
+      calendars: {
+        [calendarId]: {
+          busy: [{ start: '2026-01-01T10:00:00Z' }],
+        },
+      },
+    };
+    assert.throws(
+      () => parseFreeBusyResponse(response, calendarId),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_invalid_response',
+    );
+  });
+
+  it('rejects invalid timestamp strings', () => {
+    const response: FreeBusyResponse = {
+      calendars: {
+        [calendarId]: {
+          busy: [{ start: 'not-a-date', end: '2026-01-01T11:00:00Z' }],
+        },
+      },
+    };
+    assert.throws(
+      () => parseFreeBusyResponse(response, calendarId),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_invalid_response',
+    );
+  });
+
+  it('rejects zero-length busy intervals', () => {
+    const response: FreeBusyResponse = {
+      calendars: {
+        [calendarId]: {
+          busy: [{ start: '2026-01-01T10:00:00Z', end: '2026-01-01T10:00:00Z' }],
+        },
+      },
+    };
+    assert.throws(
+      () => parseFreeBusyResponse(response, calendarId),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_invalid_response',
+    );
+  });
+
+  it('rejects inverted busy intervals', () => {
+    const response: FreeBusyResponse = {
+      calendars: {
+        [calendarId]: {
+          busy: [{ start: '2026-01-01T11:00:00Z', end: '2026-01-01T10:00:00Z' }],
+        },
+      },
+    };
+    assert.throws(
+      () => parseFreeBusyResponse(response, calendarId),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_invalid_response',
     );
   });
 });

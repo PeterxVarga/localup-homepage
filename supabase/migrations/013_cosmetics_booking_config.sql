@@ -142,10 +142,45 @@ BEGIN
     SELECT 1 FROM public.availability_schedules
     WHERE id = 'b2222222-2222-2222-2222-222222222222'::uuid
       AND site_id = 'a1111111-1111-1111-1111-111111111111'::uuid
+      AND name = 'Szép Bőr Kozmetika nyitvatartás'
       AND timezone = 'Europe/Budapest'
+      AND is_default = false
       AND is_active = true
+      AND slot_duration_minutes = 60
+      AND slot_interval_minutes = 15
+      AND minimum_notice_minutes = 720
+      AND booking_window_days = 60
+      AND buffer_before_minutes = 0
+      AND buffer_after_minutes = 0
   ) THEN
-    RAISE EXCEPTION 'Cosmetics seed failed: schedule mismatch';
+    RAISE EXCEPTION 'Cosmetics seed failed: schedule contract mismatch';
+  END IF;
+
+  IF (
+    SELECT count(*) FROM public.availability_weekly_rules
+    WHERE schedule_id = 'b2222222-2222-2222-2222-222222222222'::uuid
+  ) <> 6 THEN
+    RAISE EXCEPTION 'Cosmetics seed failed: expected exactly 6 weekly rules';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.availability_weekly_rules
+    WHERE schedule_id = 'b2222222-2222-2222-2222-222222222222'::uuid
+      AND weekday = 6
+  ) THEN
+    RAISE EXCEPTION 'Cosmetics seed failed: Sunday must not have a weekly rule';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.availability_weekly_rules
+    WHERE schedule_id = 'b2222222-2222-2222-2222-222222222222'::uuid
+      AND (
+        (weekday IN (0, 1, 2, 3, 4) AND (start_time <> '09:00'::time OR end_time <> '18:00'::time OR sort_order <> 0))
+        OR (weekday = 5 AND (start_time <> '10:00'::time OR end_time <> '14:00'::time OR sort_order <> 0))
+        OR weekday NOT IN (0, 1, 2, 3, 4, 5)
+      )
+  ) THEN
+    RAISE EXCEPTION 'Cosmetics seed failed: weekly rule contract mismatch';
   END IF;
 END;
 $$;
@@ -290,40 +325,84 @@ INSERT INTO public.booking_services (
 ON CONFLICT (id) DO NOTHING;
 
 DO $$
+DECLARE
+  v_expected_count int;
+  v_actual_count int;
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM public.booking_services
-    WHERE slug IN ('arckezeles', 'hidralato-arckezeles', 'anti-aging-kezeles', 'kemiai-hamlasztas', 'dermapen')
-      AND site_id = 'a1111111-1111-1111-1111-111111111111'::uuid
-      AND id NOT IN (
-        'c3333333-3333-3333-3333-333333333333'::uuid,
-        'c4444444-4444-4444-4444-444444444444'::uuid,
-        'c5555555-5555-5555-5555-555555555555'::uuid,
-        'c6666666-6666-6666-6666-666666666666'::uuid,
-        'c7777777-7777-7777-7777-777777777777'::uuid
-      )
-  ) THEN
-    RAISE EXCEPTION 'Cosmetics seed failed: one or more service slugs already exist with different IDs';
+  -- Exact expected service contract, mapped by deterministic ID.
+  CREATE TEMP TABLE expected_services (
+    id uuid PRIMARY KEY,
+    slug text NOT NULL,
+    name text NOT NULL,
+    duration_minutes int NOT NULL
+  ) ON COMMIT DROP;
+
+  INSERT INTO expected_services (id, slug, name, duration_minutes) VALUES
+    ('c3333333-3333-3333-3333-333333333333'::uuid, 'arckezeles', 'Arckezelés', 60),
+    ('c4444444-4444-4444-4444-444444444444'::uuid, 'hidralato-arckezeles', 'Hidratáló arckezelés', 75),
+    ('c5555555-5555-5555-5555-555555555555'::uuid, 'anti-aging-kezeles', 'Anti-aging kezelés', 75),
+    ('c6666666-6666-6666-6666-666666666666'::uuid, 'kemiai-hamlasztas', 'Kémiai hámlasztás', 60),
+    ('c7777777-7777-7777-7777-777777777777'::uuid, 'dermapen', 'Dermapen mikrotűs kezelés', 60);
+
+  SELECT count(*) INTO v_expected_count FROM expected_services;
+
+  SELECT count(*) INTO v_actual_count
+  FROM public.booking_services bs
+  JOIN expected_services es ON bs.id = es.id
+  WHERE bs.site_id = 'a1111111-1111-1111-1111-111111111111'::uuid
+    AND bs.schedule_id = 'b2222222-2222-2222-2222-222222222222'::uuid
+    AND bs.slug = es.slug
+    AND bs.name = es.name
+    AND bs.duration_minutes = es.duration_minutes
+    AND bs.slot_interval_minutes = 15
+    AND bs.minimum_notice_minutes = 720
+    AND bs.booking_window_days = 60
+    AND bs.buffer_before_minutes = 0
+    AND bs.buffer_after_minutes = 0
+    AND bs.cancel_cutoff_hours = 12
+    AND bs.reschedule_cutoff_hours = 12
+    AND bs.max_reschedules = 2
+    AND bs.public_booking_enabled = false
+    AND bs.is_active = true;
+
+  IF v_actual_count <> v_expected_count THEN
+    RAISE EXCEPTION 'Cosmetics seed failed: expected % services matching the exact contract, found %', v_expected_count, v_actual_count;
   END IF;
 
   IF EXISTS (
     SELECT 1 FROM public.booking_services
-    WHERE id IN (
-      'c3333333-3333-3333-3333-333333333333'::uuid,
-      'c4444444-4444-4444-4444-444444444444'::uuid,
-      'c5555555-5555-5555-5555-555555555555'::uuid,
-      'c6666666-6666-6666-6666-666666666666'::uuid,
-      'c7777777-7777-7777-7777-777777777777'::uuid
-    )
-      AND (
-        site_id IS DISTINCT FROM 'a1111111-1111-1111-1111-111111111111'::uuid
-        OR schedule_id IS DISTINCT FROM 'b2222222-2222-2222-2222-222222222222'::uuid
-        OR slug NOT IN ('arckezeles', 'hidralato-arckezeles', 'anti-aging-kezeles', 'kemiai-hamlasztas', 'dermapen')
-        OR duration_minutes NOT IN (60, 75)
-        OR public_booking_enabled IS NOT false
+    WHERE slug IN (SELECT slug FROM expected_services)
+      AND site_id = 'a1111111-1111-1111-1111-111111111111'::uuid
+      AND id NOT IN (SELECT id FROM expected_services)
+  ) THEN
+    RAISE EXCEPTION 'Cosmetics seed failed: one or more expected service slugs already exist with different IDs';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.booking_services
+    WHERE id IN (SELECT id FROM expected_services)
+      AND site_id = 'a1111111-1111-1111-1111-111111111111'::uuid
+      AND id NOT IN (
+        SELECT bs.id FROM public.booking_services bs
+        JOIN expected_services es ON bs.id = es.id
+        WHERE bs.site_id = 'a1111111-1111-1111-1111-111111111111'::uuid
+          AND bs.schedule_id = 'b2222222-2222-2222-2222-222222222222'::uuid
+          AND bs.slug = es.slug
+          AND bs.name = es.name
+          AND bs.duration_minutes = es.duration_minutes
+          AND bs.slot_interval_minutes = 15
+          AND bs.minimum_notice_minutes = 720
+          AND bs.booking_window_days = 60
+          AND bs.buffer_before_minutes = 0
+          AND bs.buffer_after_minutes = 0
+          AND bs.cancel_cutoff_hours = 12
+          AND bs.reschedule_cutoff_hours = 12
+          AND bs.max_reschedules = 2
+          AND bs.public_booking_enabled = false
+          AND bs.is_active = true
       )
   ) THEN
-    RAISE EXCEPTION 'Cosmetics seed failed: one or more seeded service IDs already exist with different values';
+    RAISE EXCEPTION 'Cosmetics seed failed: one or more expected service IDs exist with non-matching values';
   END IF;
 END;
 $$;

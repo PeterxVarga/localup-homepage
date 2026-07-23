@@ -1,9 +1,11 @@
 // ============================================================
 // Generic availability resolver — pure tenant-isolated logic
 //
-// No external dependencies. The wiring with Supabase, Google and crypto
-// lives in genericAvailabilityProvider.ts.
+// The wiring with Supabase, Google and crypto lives in
+// genericAvailabilityProvider.ts.
 // ============================================================
+
+
 
 export interface CalendarConfig {
   id: string;
@@ -65,6 +67,91 @@ export async function resolveGenericAvailabilityProvider(
   }
 
   return deps.buildProvider(configs[0]);
+}
+
+export interface FreeBusyCalendarEntry {
+  busy?: Array<{ start?: string; end?: string }>;
+  errors?: Array<{ reason?: string; message?: string }>;
+}
+
+export interface FreeBusyResponse {
+  calendars?: Record<string, FreeBusyCalendarEntry>;
+}
+
+/**
+ * Parse a Google Calendar freeBusy response into validated busy slots.
+ *
+ * Fail-closed on any missing/invalid calendar data or malformed busy
+ * intervals. No credential or raw Google error detail is leaked.
+ */
+export function parseFreeBusyResponse(
+  response: FreeBusyResponse,
+  calendarId: string,
+): Array<{ start: string; end: string }> {
+  if (!response.calendars || typeof response.calendars !== 'object') {
+    throw new GenericAvailabilityProviderError(
+      'Calendar provider returned no calendars data',
+      'provider_invalid_response',
+    );
+  }
+
+  const calendar = response.calendars[calendarId];
+  if (!calendar || typeof calendar !== 'object') {
+    throw new GenericAvailabilityProviderError(
+      'Calendar provider did not return data for the configured calendar',
+      'provider_invalid_response',
+    );
+  }
+
+  if (calendar.errors && calendar.errors.length > 0) {
+    throw new GenericAvailabilityProviderError(
+      'Calendar provider returned calendar-level errors',
+      'provider_calendar_error',
+    );
+  }
+
+  if (!Array.isArray(calendar.busy)) {
+    throw new GenericAvailabilityProviderError(
+      'Calendar provider returned invalid busy data',
+      'provider_invalid_response',
+    );
+  }
+
+  return calendar.busy.map((busy, index) => {
+    if (!busy || typeof busy !== 'object') {
+      throw new GenericAvailabilityProviderError(
+        `Calendar provider returned an invalid busy interval at index ${index}`,
+        'provider_invalid_response',
+      );
+    }
+
+    if (
+      typeof busy.start !== 'string' ||
+      typeof busy.end !== 'string' ||
+      busy.start.trim() === '' ||
+      busy.end.trim() === ''
+    ) {
+      throw new GenericAvailabilityProviderError(
+        `Calendar provider returned a busy interval without start/end at index ${index}`,
+        'provider_invalid_response',
+      );
+    }
+
+    const startMs = new Date(busy.start).getTime();
+    const endMs = new Date(busy.end).getTime();
+    if (
+      Number.isNaN(startMs) ||
+      Number.isNaN(endMs) ||
+      endMs <= startMs
+    ) {
+      throw new GenericAvailabilityProviderError(
+        `Calendar provider returned an invalid busy interval at index ${index}`,
+        'provider_invalid_response',
+      );
+    }
+
+    return { start: busy.start, end: busy.end };
+  });
 }
 
 /**
