@@ -127,8 +127,14 @@ INSERT INTO public.availability_schedules (
   'Europe/Budapest',
   false,
   true,
+  -- Legacy schedule compatibility values. The availability_schedules
+  -- slot_interval_check requires slot_interval_minutes >= slot_duration_minutes.
+  -- Generic booking runtime uses booking_services.duration_minutes and
+  -- booking_services.slot_interval_minutes, so the schedule-level grid here
+  -- does not restrict the 60/75 minute Cosmetics services or their 15-minute
+  -- start grid.
   60,
-  15,
+  60,
   720,
   60,
   0,
@@ -146,8 +152,11 @@ BEGIN
       AND timezone = 'Europe/Budapest'
       AND is_default = false
       AND is_active = true
+      -- Legacy schedule compatibility: satisfies the availability_schedules
+      -- slot_interval_minutes >= slot_duration_minutes check. Runtime slot
+      -- duration and grid come from booking_services.
       AND slot_duration_minutes = 60
-      AND slot_interval_minutes = 15
+      AND slot_interval_minutes = 60
       AND minimum_notice_minutes = 720
       AND booking_window_days = 60
       AND buffer_before_minutes = 0
@@ -247,6 +256,10 @@ $$;
 -- ----------------------------------------------------------------
 -- public_booking_enabled remains false: this PR intentionally does not
 -- enable public bookings for Cosmetics yet.
+--
+-- Each service keeps its own duration_minutes and slot_interval_minutes.
+-- The generic booking runtime uses booking_services.duration_minutes and
+-- booking_services.slot_interval_minutes, not the legacy schedule fields.
 INSERT INTO public.booking_services (
   id,
   site_id,
