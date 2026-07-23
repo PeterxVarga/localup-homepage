@@ -215,6 +215,36 @@ describe('parseFreeBusyResponse', () => {
     );
   });
 
+  it('accepts an empty errors array', () => {
+    const response: FreeBusyResponse = {
+      calendars: {
+        [calendarId]: {
+          busy: [],
+          errors: [],
+        },
+      },
+    };
+    const result = parseFreeBusyResponse(response, calendarId);
+    assert.equal(result.length, 0);
+  });
+
+  it('rejects a non-array errors value', () => {
+    const response: FreeBusyResponse = {
+      calendars: {
+        [calendarId]: {
+          busy: [],
+          errors: { reason: 'notFound' } as unknown as Array<{ reason?: string }>,
+        },
+      },
+    };
+    assert.throws(
+      () => parseFreeBusyResponse(response, calendarId),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_invalid_response',
+    );
+  });
+
   it('rejects busy entries missing start or end', () => {
     const response: FreeBusyResponse = {
       calendars: {

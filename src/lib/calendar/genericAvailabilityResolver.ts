@@ -103,11 +103,20 @@ export function parseFreeBusyResponse(
     );
   }
 
-  if (calendar.errors && calendar.errors.length > 0) {
-    throw new GenericAvailabilityProviderError(
-      'Calendar provider returned calendar-level errors',
-      'provider_calendar_error',
-    );
+  if (calendar.errors !== undefined) {
+    if (!Array.isArray(calendar.errors)) {
+      throw new GenericAvailabilityProviderError(
+        'Calendar provider returned invalid errors data',
+        'provider_invalid_response',
+      );
+    }
+
+    if (calendar.errors.length > 0) {
+      throw new GenericAvailabilityProviderError(
+        'Calendar provider returned calendar-level errors',
+        'provider_calendar_error',
+      );
+    }
   }
 
   if (!Array.isArray(calendar.busy)) {

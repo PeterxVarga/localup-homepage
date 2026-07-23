@@ -155,33 +155,6 @@ BEGIN
   ) THEN
     RAISE EXCEPTION 'Cosmetics seed failed: schedule contract mismatch';
   END IF;
-
-  IF (
-    SELECT count(*) FROM public.availability_weekly_rules
-    WHERE schedule_id = 'b2222222-2222-2222-2222-222222222222'::uuid
-  ) <> 6 THEN
-    RAISE EXCEPTION 'Cosmetics seed failed: expected exactly 6 weekly rules';
-  END IF;
-
-  IF EXISTS (
-    SELECT 1 FROM public.availability_weekly_rules
-    WHERE schedule_id = 'b2222222-2222-2222-2222-222222222222'::uuid
-      AND weekday = 6
-  ) THEN
-    RAISE EXCEPTION 'Cosmetics seed failed: Sunday must not have a weekly rule';
-  END IF;
-
-  IF EXISTS (
-    SELECT 1 FROM public.availability_weekly_rules
-    WHERE schedule_id = 'b2222222-2222-2222-2222-222222222222'::uuid
-      AND (
-        (weekday IN (0, 1, 2, 3, 4) AND (start_time <> '09:00'::time OR end_time <> '18:00'::time OR sort_order <> 0))
-        OR (weekday = 5 AND (start_time <> '10:00'::time OR end_time <> '14:00'::time OR sort_order <> 0))
-        OR weekday NOT IN (0, 1, 2, 3, 4, 5)
-      )
-  ) THEN
-    RAISE EXCEPTION 'Cosmetics seed failed: weekly rule contract mismatch';
-  END IF;
 END;
 $$;
 
@@ -208,6 +181,66 @@ WHERE EXISTS (
   WHERE id = 'b2222222-2222-2222-2222-222222222222'::uuid
 )
 ON CONFLICT DO NOTHING;
+
+-- Two-way exact validation of weekly rules.
+DO $$
+DECLARE
+  v_expected_count int;
+  v_actual_count int;
+BEGIN
+  CREATE TEMP TABLE expected_rules (
+    weekday int NOT NULL,
+    start_time time NOT NULL,
+    end_time time NOT NULL,
+    sort_order int NOT NULL,
+    PRIMARY KEY (weekday, start_time, end_time, sort_order)
+  ) ON COMMIT DROP;
+
+  INSERT INTO expected_rules (weekday, start_time, end_time, sort_order) VALUES
+    (0, '09:00'::time, '18:00'::time, 0),
+    (1, '09:00'::time, '18:00'::time, 0),
+    (2, '09:00'::time, '18:00'::time, 0),
+    (3, '09:00'::time, '18:00'::time, 0),
+    (4, '09:00'::time, '18:00'::time, 0),
+    (5, '10:00'::time, '14:00'::time, 0);
+
+  SELECT count(*) INTO v_expected_count FROM expected_rules;
+
+  SELECT count(*) INTO v_actual_count
+  FROM public.availability_weekly_rules
+  WHERE schedule_id = 'b2222222-2222-2222-2222-222222222222'::uuid;
+
+  IF v_actual_count <> v_expected_count THEN
+    RAISE EXCEPTION 'Cosmetics seed failed: expected % weekly rules, found %', v_expected_count, v_actual_count;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM expected_rules er
+    LEFT JOIN public.availability_weekly_rules ar
+      ON ar.schedule_id = 'b2222222-2222-2222-2222-222222222222'::uuid
+      AND ar.weekday = er.weekday
+      AND ar.start_time = er.start_time
+      AND ar.end_time = er.end_time
+      AND ar.sort_order = er.sort_order
+    WHERE ar.id IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Cosmetics seed failed: one or more expected weekly rules are missing';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM public.availability_weekly_rules ar
+    LEFT JOIN expected_rules er
+      ON ar.weekday = er.weekday
+      AND ar.start_time = er.start_time
+      AND ar.end_time = er.end_time
+      AND ar.sort_order = er.sort_order
+    WHERE ar.schedule_id = 'b2222222-2222-2222-2222-222222222222'::uuid
+      AND er.weekday IS NULL
+  ) THEN
+    RAISE EXCEPTION 'Cosmetics seed failed: one or more unexpected weekly rules exist';
+  END IF;
+END;
+$$;
 
 -- ----------------------------------------------------------------
 -- 5. Seed Cosmetics booking services
