@@ -9,8 +9,8 @@
 import type { APIRoute } from 'astro';
 import { isSupabaseConfigured } from '../../../../../lib/supabase';
 import { generateAvailableSlots } from '../../../../../lib/booking/generateSlots';
-import { getAggregatedFreeBusy } from '../../../../../lib/calendar/syncBookingToCalendar';
 import { getBookingServiceContext } from '../../../../../lib/booking-service/queries';
+import { resolveGenericAvailabilityProvider } from '../../../../../lib/calendar/genericAvailabilityProvider';
 
 export const GET: APIRoute = async ({ params }) => {
   const siteSlug = typeof params.siteSlug === 'string' ? params.siteSlug : '';
@@ -29,7 +29,22 @@ export const GET: APIRoute = async ({ params }) => {
 
   try {
     const service = await getBookingServiceContext(siteSlug, serviceSlug);
-    const slots = await generateAvailableSlots(service, getAggregatedFreeBusy);
+
+    if (!service.publicBookingEnabled) {
+      return new Response(
+        JSON.stringify({
+          error: 'service_unavailable',
+          message: 'Booking service is not configured',
+        }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    const provider = await resolveGenericAvailabilityProvider(
+      service.siteId,
+      service.siteSlug,
+    );
+    const slots = await generateAvailableSlots(service, provider.getFreeBusy);
 
     return new Response(JSON.stringify({ slots }), {
       status: 200,

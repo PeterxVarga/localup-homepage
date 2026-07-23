@@ -17,6 +17,7 @@ import {
 import { getSupabase } from '../supabase';
 import type { BookingServiceContext } from '../booking-service/types';
 import { BookingServiceError } from '../booking-service/types';
+import { intervalsOverlap } from './intervals';
 
 export interface TimeSlot {
   start: string;
@@ -138,28 +139,35 @@ export function generateCandidateSlots(
   return days;
 }
 
-function overlapsWithBuffer(
+/**
+ * Compute the candidate slot's own blocked interval using its service buffers,
+ * then check whether it overlaps the supplied busy interval.
+ *
+ * For audit bookings and calendar freeBusy the busy interval is the raw slot;
+ * for generic bookings the busy interval is the stored blocked_start/end that
+ * already contains the existing booking's buffers. In both cases only the
+ * candidate's own buffer is applied here, so existing buffers are never
+ * counted twice.
+ */
+function candidateBlockedOverlaps(
   slot: TimeSlot,
   busy: BusySlot,
   bufferBeforeMinutes: number,
   bufferAfterMinutes: number,
 ): boolean {
-  const slotStart =
-    new Date(slot.start).getTime() - bufferBeforeMinutes * MINUTE_MS;
-  const slotEnd = new Date(slot.end).getTime() + bufferAfterMinutes * MINUTE_MS;
-  const busyStart = new Date(busy.start).getTime();
-  const busyEnd = new Date(busy.end).getTime();
+  const candidateBlockedStart = new Date(
+    new Date(slot.start).getTime() - bufferBeforeMinutes * MINUTE_MS,
+  );
+  const candidateBlockedEnd = new Date(
+    new Date(slot.end).getTime() + bufferAfterMinutes * MINUTE_MS,
+  );
 
-  return slotStart < busyEnd && slotEnd > busyStart;
-}
-
-/**
- * Plain half-open interval overlap. Used for busy intervals that already
- * include the full blocked range (e.g. generic bookings) so the buffer is not
- * counted twice.
- */
-function overlaps(slot: TimeSlot, busy: BusySlot): boolean {
-  return slot.start < busy.end && slot.end > busy.start;
+  return intervalsOverlap(
+    candidateBlockedStart,
+    candidateBlockedEnd,
+    busy.start,
+    busy.end,
+  );
 }
 
 /**
@@ -236,16 +244,23 @@ export async function generateAvailableSlots(
       slots: day.slots.filter(
         (slot) =>
           !auditBusy.some((busy) =>
-            overlapsWithBuffer(
+            candidateBlockedOverlaps(
               slot,
               busy,
               service.bufferBeforeMinutes,
               service.bufferAfterMinutes,
             ),
           ) &&
-          !genericBusy.some((busy) => overlaps(slot, busy)) &&
+          !genericBusy.some((busy) =>
+            candidateBlockedOverlaps(
+              slot,
+              busy,
+              service.bufferBeforeMinutes,
+              service.bufferAfterMinutes,
+            ),
+          ) &&
           !calendarBusy.some((busy) =>
-            overlapsWithBuffer(
+            candidateBlockedOverlaps(
               slot,
               busy,
               service.bufferBeforeMinutes,

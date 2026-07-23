@@ -11,7 +11,7 @@ import { isSupabaseConfigured } from '../../../../../lib/supabase';
 import { genericBookingRequestSchema } from '../../../../../lib/generic-booking/validation';
 import { createGenericBooking } from '../../../../../lib/generic-booking/createBooking';
 import { generateAvailableSlots } from '../../../../../lib/booking/generateSlots';
-import { getAggregatedFreeBusy } from '../../../../../lib/calendar/syncBookingToCalendar';
+import { resolveGenericAvailabilityProvider } from '../../../../../lib/calendar/genericAvailabilityProvider';
 import { getBookingServiceContext } from '../../../../../lib/booking-service/queries';
 import {
   isRateLimited,
@@ -112,13 +112,28 @@ export const POST: APIRoute = async ({ params, request }) => {
     );
   }
 
+  if (!service.publicBookingEnabled) {
+    return jsonResponse(
+      {
+        success: false,
+        error: 'service_unavailable',
+        message: 'Booking service is not configured',
+      },
+      503,
+    );
+  }
+
   // Full availability revalidation using the same generator as the slot list.
   try {
     const requestedStart = new Date(input.slotStart).toISOString();
     const requestedEnd = new Date(input.slotEnd).toISOString();
+    const provider = await resolveGenericAvailabilityProvider(
+      service.siteId,
+      service.siteSlug,
+    );
     const availableDays = await generateAvailableSlots(
       service,
-      getAggregatedFreeBusy,
+      provider.getFreeBusy,
     );
     const available = availableDays.some((day) =>
       day.slots.some(
@@ -153,10 +168,15 @@ export const POST: APIRoute = async ({ params, request }) => {
 
   const result = await createGenericBooking(input, service);
   if (!result.success) {
-    return jsonResponse(
-      result,
-      result.error === 'slot_taken' ? 409 : 503,
-    );
+    const statusMap: Record<
+      typeof result.error,
+      number
+    > = {
+      invalid_slot: 400,
+      slot_taken: 409,
+      db_error: 500,
+    };
+    return jsonResponse(result, statusMap[result.error] ?? 503);
   }
 
   return jsonResponse(

@@ -33,6 +33,11 @@ ALTER TABLE public.booking_services
   ADD CONSTRAINT booking_services_slot_interval_check
     CHECK (slot_interval_minutes BETWEEN 5 AND 240 AND slot_interval_minutes % 5 = 0);
 
+-- Fail-closed toggle for the generic public booking API. Existing services
+-- (including localup_audit) remain disabled until explicitly enabled.
+ALTER TABLE public.booking_services
+  ADD COLUMN IF NOT EXISTS public_booking_enabled boolean NOT NULL DEFAULT false;
+
 -- ----------------------------------------------------------------
 -- 2. public.bookings
 -- ----------------------------------------------------------------
@@ -124,12 +129,6 @@ CREATE INDEX IF NOT EXISTS idx_bookings_service_slot_start
 
 CREATE INDEX IF NOT EXISTS idx_bookings_site_blocked
   ON public.bookings (site_id, blocked_start, blocked_end);
-
-CREATE INDEX IF NOT EXISTS idx_bookings_service_id
-  ON public.bookings (service_id);
-
-CREATE INDEX IF NOT EXISTS idx_bookings_site_id
-  ON public.bookings (site_id);
 
 -- ----------------------------------------------------------------
 -- 4. Schema grant

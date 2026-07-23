@@ -31,6 +31,7 @@ interface ServiceRow {
   cancel_cutoff_hours: number;
   reschedule_cutoff_hours: number;
   max_reschedules: number;
+  public_booking_enabled: boolean;
 }
 
 interface ScheduleRow {
@@ -53,6 +54,7 @@ const SERVICE_FIELDS = [
   'cancel_cutoff_hours',
   'reschedule_cutoff_hours',
   'max_reschedules',
+  'public_booking_enabled',
 ].join(',');
 
 function mapServiceRow(row: ServiceRow): Omit<BookingServiceContext, 'siteSlug' | 'timezone'> {
@@ -70,6 +72,7 @@ function mapServiceRow(row: ServiceRow): Omit<BookingServiceContext, 'siteSlug' 
     cancelCutoffHours: row.cancel_cutoff_hours,
     rescheduleCutoffHours: row.reschedule_cutoff_hours,
     maxReschedules: row.max_reschedules,
+    publicBookingEnabled: row.public_booking_enabled,
   };
 }
 

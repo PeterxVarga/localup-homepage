@@ -49,15 +49,31 @@ export function computeBlockedRange(
   };
 }
 
+function toEpochMs(value: string | Date): number {
+  const date = typeof value === 'string' ? new Date(value) : value;
+  if (Number.isNaN(date.getTime())) {
+    throw new RangeError(`Invalid timestamp: ${value}`);
+  }
+  return date.getTime();
+}
+
 /**
  * Check whether two half-open intervals [aStart, aEnd) and [bStart, bEnd)
  * overlap.
+ *
+ * Accepts ISO strings in any equivalent format (e.g. .000Z or +02:00) and
+ * Date objects. Invalid timestamps throw RangeError (fail-closed).
  */
 export function intervalsOverlap(
-  aStart: string,
-  aEnd: string,
-  bStart: string,
-  bEnd: string,
+  aStart: string | Date,
+  aEnd: string | Date,
+  bStart: string | Date,
+  bEnd: string | Date,
 ): boolean {
-  return aStart < bEnd && bStart < aEnd;
+  const a0 = toEpochMs(aStart);
+  const a1 = toEpochMs(aEnd);
+  const b0 = toEpochMs(bStart);
+  const b1 = toEpochMs(bEnd);
+
+  return a0 < b1 && b0 < a1;
 }

@@ -31,6 +31,7 @@ const service75Min: BookingServiceContext = {
   cancelCutoffHours: 12,
   rescheduleCutoffHours: 12,
   maxReschedules: 2,
+  publicBookingEnabled: true,
 };
 
 describe('computeBlockedRange', () => {
@@ -111,6 +112,48 @@ describe('intervalsOverlap', () => {
       false,
     );
   });
+
+  it('produces the same result for equivalent ISO formats', () => {
+    // 12:00+02:00 == 10:00Z; these identical intervals overlap.
+    assert.equal(
+      intervalsOverlap(
+        '2026-08-01T10:00:00.000Z',
+        '2026-08-01T11:00:00.000Z',
+        '2026-08-01T12:00:00+02:00',
+        '2026-08-01T13:00:00+02:00',
+      ),
+      true,
+    );
+
+    // 11:30+02:00 == 09:30Z, 12:30+02:00 == 10:30Z -> overlaps 10:00-12:00.
+    assert.equal(
+      intervalsOverlap(
+        '2026-08-01T10:00:00.000Z',
+        '2026-08-01T12:00:00.000Z',
+        '2026-08-01T11:30:00+02:00',
+        '2026-08-01T12:30:00+02:00',
+      ),
+      true,
+    );
+
+    // 12:00+02:00 == 10:00Z, touching at the boundary -> no overlap.
+    assert.equal(
+      intervalsOverlap(
+        '2026-08-01T09:00:00.000Z',
+        '2026-08-01T10:00:00.000Z',
+        '2026-08-01T12:00:00+02:00',
+        '2026-08-01T13:00:00+02:00',
+      ),
+      false,
+    );
+  });
+
+  it('throws RangeError for invalid timestamps', () => {
+    assert.throws(
+      () => intervalsOverlap('not-a-date', '2025-08-01T10:00:00.000Z', '2025-08-01T09:00:00.000Z', '2025-08-01T10:00:00.000Z'),
+      RangeError,
+    );
+  });
 });
 
 describe('genericBookingRequestSchema', () => {
@@ -119,8 +162,8 @@ describe('genericBookingRequestSchema', () => {
     email: 'jane@example.com',
     phone: '+36 30 123 4567',
     notes: 'Notes',
-    slotStart: '2025-08-01T09:00:00.000Z',
-    slotEnd: '2025-08-01T10:15:00.000Z',
+    slotStart: '2025-08-01T09:00:00+00:00',
+    slotEnd: '2025-08-01T10:15:00+00:00',
     locale: 'hu',
   };
 
@@ -177,6 +220,30 @@ describe('genericBookingRequestSchema', () => {
     });
     assert.equal(result.success, false);
   });
+
+  it('rejects invalid ISO datetime without offset', () => {
+    const result = genericBookingRequestSchema.safeParse({
+      ...validBody,
+      slotStart: '2025-08-01T09:00:00',
+    });
+    assert.equal(result.success, false);
+  });
+
+  it('rejects unsupported locale', () => {
+    const result = genericBookingRequestSchema.safeParse({
+      ...validBody,
+      locale: 'de',
+    });
+    assert.equal(result.success, false);
+  });
+
+  it('trims and rejects empty name', () => {
+    const result = genericBookingRequestSchema.safeParse({
+      ...validBody,
+      name: '   ',
+    });
+    assert.equal(result.success, false);
+  });
 });
 
 describe('getExpectedSlotEnd', () => {
@@ -191,5 +258,50 @@ describe('getExpectedSlotEnd', () => {
     const expectedEnd = getExpectedSlotEnd(start, service75Min.durationMinutes);
     const wrongEnd = '2025-08-01T10:00:00.000Z';
     assert.notEqual(wrongEnd, expectedEnd);
+  });
+});
+
+describe('generic buffer logic', () => {
+  const existingBlocked = {
+    start: '2025-08-01T10:00:00.000Z',
+    end: '2025-08-01T11:00:00.000Z',
+  };
+
+  function candidateOverlaps(
+    rawSlotStart: string,
+    rawSlotEnd: string,
+    bufferAfterMinutes: number,
+  ): boolean {
+    const { blockedStart, blockedEnd } = computeBlockedRange(
+      rawSlotStart,
+      rawSlotEnd,
+      0,
+      bufferAfterMinutes,
+    );
+    return intervalsOverlap(blockedStart, blockedEnd, existingBlocked.start, existingBlocked.end);
+  }
+
+  it('does not overlap when candidate buffer leaves a gap', () => {
+    // 09:40 + 15 min buffer -> 09:55, still before the 10:00 blocked start.
+    assert.equal(
+      candidateOverlaps('2025-08-01T09:30:00.000Z', '2025-08-01T09:40:00.000Z', 15),
+      false,
+    );
+  });
+
+  it('does not overlap when candidate buffer exactly touches existing blocked end [)', () => {
+    // 09:40 + 20 min buffer -> 10:00, exactly touches the [) boundary.
+    assert.equal(
+      candidateOverlaps('2025-08-01T09:30:00.000Z', '2025-08-01T09:40:00.000Z', 20),
+      false,
+    );
+  });
+
+  it('overlaps when candidate buffer exceeds the touch point', () => {
+    // 09:40 + 21 min buffer -> 10:01, crosses into the existing blocked range.
+    assert.equal(
+      candidateOverlaps('2025-08-01T09:30:00.000Z', '2025-08-01T09:40:00.000Z', 21),
+      true,
+    );
   });
 });
