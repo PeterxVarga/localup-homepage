@@ -21,6 +21,7 @@ export interface BookingServiceContext extends BookingServiceConfig {
   serviceId: string;
   serviceSlug: string;
   scheduleId: string;
+  publicBookingEnabled: boolean;
 }
 
 export class BookingServiceError extends Error {
