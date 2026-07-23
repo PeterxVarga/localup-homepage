@@ -11,7 +11,10 @@ import { isSupabaseConfigured } from '../../../../../lib/supabase';
 import { genericBookingRequestSchema } from '../../../../../lib/generic-booking/validation';
 import { createGenericBooking } from '../../../../../lib/generic-booking/createBooking';
 import { generateAvailableSlots } from '../../../../../lib/booking/generateSlots';
-import { resolveGenericAvailabilityProvider } from '../../../../../lib/calendar/genericAvailabilityProvider';
+import {
+  resolveGenericAvailabilityProvider,
+  bindGetFreeBusy,
+} from '../../../../../lib/calendar/genericAvailabilityProvider';
 import { getBookingServiceContext } from '../../../../../lib/booking-service/queries';
 import {
   isRateLimited,
@@ -133,7 +136,7 @@ export const POST: APIRoute = async ({ params, request }) => {
     );
     const availableDays = await generateAvailableSlots(
       service,
-      (timeMin, timeMax) => provider.getFreeBusy(timeMin, timeMax),
+      bindGetFreeBusy(provider),
     );
     const available = availableDays.some((day) =>
       day.slots.some(
