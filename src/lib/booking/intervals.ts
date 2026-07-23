@@ -75,5 +75,12 @@ export function intervalsOverlap(
   const b0 = toEpochMs(bStart);
   const b1 = toEpochMs(bEnd);
 
+  if (a1 <= a0) {
+    throw new RangeError('Invalid interval: aEnd must be after aStart');
+  }
+  if (b1 <= b0) {
+    throw new RangeError('Invalid interval: bEnd must be after bStart');
+  }
+
   return a0 < b1 && b0 < a1;
 }

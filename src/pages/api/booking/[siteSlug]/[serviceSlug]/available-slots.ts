@@ -44,7 +44,10 @@ export const GET: APIRoute = async ({ params }) => {
       service.siteId,
       service.siteSlug,
     );
-    const slots = await generateAvailableSlots(service, provider.getFreeBusy);
+    const slots = await generateAvailableSlots(
+      service,
+      (timeMin, timeMax) => provider.getFreeBusy(timeMin, timeMax),
+    );
 
     return new Response(JSON.stringify({ slots }), {
       status: 200,

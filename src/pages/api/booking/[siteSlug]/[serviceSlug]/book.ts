@@ -133,7 +133,7 @@ export const POST: APIRoute = async ({ params, request }) => {
     );
     const availableDays = await generateAvailableSlots(
       service,
-      provider.getFreeBusy,
+      (timeMin, timeMax) => provider.getFreeBusy(timeMin, timeMax),
     );
     const available = availableDays.some((day) =>
       day.slots.some(

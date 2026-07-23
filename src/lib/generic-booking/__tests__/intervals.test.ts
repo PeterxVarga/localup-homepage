@@ -154,6 +154,34 @@ describe('intervalsOverlap', () => {
       RangeError,
     );
   });
+
+  it('throws RangeError for zero-length interval a', () => {
+    assert.throws(
+      () => intervalsOverlap('2025-08-01T10:00:00.000Z', '2025-08-01T10:00:00.000Z', '2025-08-01T09:00:00.000Z', '2025-08-01T11:00:00.000Z'),
+      RangeError,
+    );
+  });
+
+  it('throws RangeError for inverted interval a', () => {
+    assert.throws(
+      () => intervalsOverlap('2025-08-01T11:00:00.000Z', '2025-08-01T10:00:00.000Z', '2025-08-01T09:00:00.000Z', '2025-08-01T12:00:00.000Z'),
+      RangeError,
+    );
+  });
+
+  it('throws RangeError for zero-length interval b', () => {
+    assert.throws(
+      () => intervalsOverlap('2025-08-01T09:00:00.000Z', '2025-08-01T12:00:00.000Z', '2025-08-01T10:00:00.000Z', '2025-08-01T10:00:00.000Z'),
+      RangeError,
+    );
+  });
+
+  it('throws RangeError for inverted interval b', () => {
+    assert.throws(
+      () => intervalsOverlap('2025-08-01T09:00:00.000Z', '2025-08-01T12:00:00.000Z', '2025-08-01T11:00:00.000Z', '2025-08-01T10:00:00.000Z'),
+      RangeError,
+    );
+  });
 });
 
 describe('genericBookingRequestSchema', () => {
