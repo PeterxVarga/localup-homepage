@@ -2,23 +2,22 @@
 // Generic booking — cancel
 //
 // Works exclusively on public.bookings. Never touches audit_bookings.
-// Does NOT create/patch/delete Calendar events and does NOT send emails
-// in this slice.
+// Does NOT send emails or reminders in this slice.
 //
-// Temporary fail-closed transition rule:
-//   If the booking already has a google_calendar_event_id OR its
-//   calendar_sync_status is 'synced', the operation returns
-//   service_unavailable and makes no database changes. Calendar event
-//   CRUD will be wired in a later slice.
+// On a successful database cancellation the tenant Calendar event is also
+// deleted if one exists. A Google 404 is treated as a successful deletion.
+// If the Calendar deletion fails with a non-404 error, the booking stays
+// cancelled and a service_unavailable error is returned so the mismatch is
+// not silently ignored.
 //
 // Fail-closed:
 //   - malformed/short token                -> not_found
 //   - missing / mismatched / expired token -> not_found
-//   - calendar event already present/synced-> service_unavailable
 //   - booking not pending/booked           -> invalid_state
 //   - service/site/schedule cannot load    -> service_unavailable
 //   - cancel cutoff passed                 -> cutoff_passed
 //   - concurrent status change (0 rows)    -> invalid_state
+//   - calendar deletion non-404 error      -> service_unavailable
 //
 // Existing bookings remain cancellable even if the service is no longer
 // actively bookable (public_booking_enabled=false or is_active=false).
@@ -32,6 +31,8 @@ import {
 import { loadBookingServiceContextForManagement } from './loadServiceContext';
 import { isValidManagementTokenFormat } from './tokenValidation';
 import type { BookingServiceContext } from '../booking-service/types';
+import { resolveGenericAvailabilityProvider } from '../calendar/genericAvailabilityProvider';
+import type { GenericCalendarProvider } from '../calendar/genericAvailabilityResolver';
 
 export interface CancelGenericBookingResult {
   success: true;
@@ -57,6 +58,7 @@ export type CancelGenericBookingOutcome =
 
 interface BookingRow {
   id: string;
+  site_id: string;
   service_id: string;
   slot_start: string;
   booking_status: 'pending' | 'booked' | 'cancelled';
@@ -75,6 +77,22 @@ export interface CancelBookingDeps {
     now: Date,
     currentStatus: 'pending' | 'booked',
   ) => Promise<BookingRow | null>;
+  resolveCalendarProvider?: (
+    siteId: string,
+    siteSlug: string,
+  ) => Promise<GenericCalendarProvider>;
+  deleteCalendarEvent?: (
+    provider: GenericCalendarProvider,
+    eventId: string,
+  ) => Promise<boolean>;
+  clearCalendarEventInDb?: (params: {
+    bookingId: string;
+    eventId: string;
+  }) => Promise<boolean>;
+  markCalendarSyncFailed?: (params: {
+    bookingId: string;
+    eventId: string;
+  }) => Promise<boolean>;
   hashToken?: (rawToken: string) => string;
   verifyToken?: (rawToken: string, encryptedToken: string) => boolean;
   now?: () => Date;
@@ -85,7 +103,7 @@ const defaultDeps: Required<CancelBookingDeps> = {
     const { data, error } = await getSupabase()
       .from('bookings')
       .select(
-        'id, service_id, slot_start, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status',
+        'id, site_id, service_id, slot_start, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status',
       )
       .eq('management_token_hash', hash)
       .maybeSingle();
@@ -110,7 +128,7 @@ const defaultDeps: Required<CancelBookingDeps> = {
       .eq('id', bookingId)
       .eq('booking_status', currentStatus)
       .select(
-        'id, service_id, slot_start, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status',
+        'id, site_id, service_id, slot_start, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status',
       )
       .single();
 
@@ -120,6 +138,50 @@ const defaultDeps: Required<CancelBookingDeps> = {
     }
 
     return (data as BookingRow | null) ?? null;
+  },
+  async resolveCalendarProvider(siteId, siteSlug) {
+    return resolveGenericAvailabilityProvider(siteId, siteSlug);
+  },
+  async deleteCalendarEvent(provider, eventId) {
+    const result = await provider.deleteEvent(eventId);
+    return result.ok;
+  },
+  async clearCalendarEventInDb({ bookingId, eventId }) {
+    const { error } = await getSupabase()
+      .from('bookings')
+      .update({
+        google_calendar_event_id: null,
+        calendar_sync_status: 'synced',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId)
+      .eq('booking_status', 'cancelled')
+      .eq('google_calendar_event_id', eventId);
+
+    if (error) {
+      console.error('Generic cancel: failed to clear calendar event in DB');
+      return false;
+    }
+
+    return true;
+  },
+  async markCalendarSyncFailed({ bookingId, eventId }) {
+    const { error } = await getSupabase()
+      .from('bookings')
+      .update({
+        calendar_sync_status: 'failed',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId)
+      .eq('booking_status', 'cancelled')
+      .eq('google_calendar_event_id', eventId);
+
+    if (error) {
+      console.error('Generic cancel: failed to mark calendar sync failed');
+      return false;
+    }
+
+    return true;
   },
   hashToken: hashManagementToken,
   verifyToken: verifyManagementToken,
@@ -154,6 +216,10 @@ export async function cancelGenericBooking(
     lookupByTokenHash,
     loadServiceContext,
     cancelBookingInDb,
+    resolveCalendarProvider,
+    deleteCalendarEvent,
+    clearCalendarEventInDb,
+    markCalendarSyncFailed,
     hashToken,
     verifyToken,
     now,
@@ -187,20 +253,6 @@ export async function cancelGenericBooking(
       success: false,
       error: 'not_found',
       message: 'Érvénytelen vagy lejárt link.',
-    };
-  }
-
-  // Temporary fail-closed transition rule: do not modify bookings that
-  // already have a Calendar event or are marked synced.
-  if (
-    booking.google_calendar_event_id ||
-    booking.calendar_sync_status === 'synced'
-  ) {
-    return {
-      success: false,
-      error: 'service_unavailable',
-      message:
-        'A foglalás jelenleg nem kezelhető online. Kérlek válaszolj az eredeti emailre.',
     };
   }
 
@@ -252,6 +304,43 @@ export async function cancelGenericBooking(
       error: 'invalid_state',
       message: 'Ezt a foglalást nem lehet lemondani.',
     };
+  }
+
+  // Delete the tenant Calendar event if one exists. A 404 from Google is
+  // treated as a successful deletion. Any other Calendar error is surfaced
+  // so the mismatch is not silently ignored.
+  const eventId = booking.google_calendar_event_id;
+  if (eventId) {
+    let calendarDeleted: boolean;
+    try {
+      const provider = await resolveCalendarProvider(
+        service.siteId,
+        service.siteSlug,
+      );
+      calendarDeleted = await deleteCalendarEvent(provider, eventId);
+    } catch (err) {
+      console.error('Generic cancel: calendar event deletion failed');
+      calendarDeleted = false;
+    }
+
+    if (calendarDeleted) {
+      const cleared = await clearCalendarEventInDb({ bookingId: booking.id, eventId });
+      if (!cleared) {
+        console.error('Generic cancel: failed to clear calendar event in DB');
+      }
+    } else {
+      const marked = await markCalendarSyncFailed({ bookingId: booking.id, eventId });
+      if (!marked) {
+        console.error('Generic cancel: failed to mark calendar sync failed');
+      }
+
+      return {
+        success: false,
+        error: 'service_unavailable',
+        message:
+          'A foglalás lemondása sikeres volt, de a naptáresemény törlése nem sikerült. Kérlek válaszolj az eredeti emailre.',
+      };
+    }
   }
 
   return { success: true, status: 'cancelled' };
