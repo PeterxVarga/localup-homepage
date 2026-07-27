@@ -86,6 +86,7 @@ export async function syncBookingToCalendar(params: {
         description,
         start: params.slotStart,
         end: params.slotEnd,
+        timeZone: 'Europe/Budapest',
         attendeeEmail: params.email,
       });
 

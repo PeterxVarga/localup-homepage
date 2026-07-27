@@ -12,9 +12,10 @@ export interface BusySlot {
 /** Parameters for creating a calendar event */
 export interface CreateEventParams {
   summary: string;
-  description: string;
+  description?: string;
   start: string; // ISO 8601
   end: string; // ISO 8601
+  timeZone: string;
   attendeeEmail?: string;
 }
 
@@ -53,6 +54,7 @@ export type DeleteEventResult =
 export interface PatchEventParams {
   start: string; // ISO 8601
   end: string; // ISO 8601
+  timeZone: string;
 }
 
 /**

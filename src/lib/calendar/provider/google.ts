@@ -161,8 +161,8 @@ export const googleCalendarProvider: CalendarProvider = {
         eventId,
         sendUpdates: 'none',
         requestBody: {
-          start: { dateTime: params.start, timeZone: 'Europe/Budapest' },
-          end: { dateTime: params.end, timeZone: 'Europe/Budapest' },
+          start: { dateTime: params.start, timeZone: params.timeZone },
+          end: { dateTime: params.end, timeZone: params.timeZone },
         },
       });
 
