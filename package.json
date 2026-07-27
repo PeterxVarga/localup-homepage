@@ -10,7 +10,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "test": "node --experimental-strip-types --test 'src/lib/**/*.test.ts'"
+    "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {
     "@astrojs/preact": "^6.0.1",
