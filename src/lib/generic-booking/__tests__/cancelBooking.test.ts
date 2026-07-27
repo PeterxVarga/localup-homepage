@@ -46,6 +46,10 @@ function makeBooking(overrides: Record<string, unknown> = {}) {
     booking: {
       id: 'b1111111-1111-1111-1111-111111111111',
       service_id: serviceContext.serviceId,
+      customer_name: 'Teszt Elek',
+      customer_email: 'teszt@example.com',
+      customer_phone: null,
+      customer_notes: null,
       slot_start: currentSlotStart,
       slot_end: currentSlotEnd,
       booking_status: 'booked' as const,
@@ -78,6 +82,7 @@ function baseDeps(
     deleteCalendarEvent: async () => true,
     clearCalendarEventInDb: async () => true,
     markCalendarSyncFailed: async () => true,
+    sendCancellationEmails: async () => ({ customer: true, admin: true }),
     hashToken: () => 'hash-123',
     verifyToken: () => true,
     now: () => now,
@@ -318,5 +323,46 @@ describe('cancelGenericBooking', () => {
     });
 
     assertError(result, 'invalid_state');
+  });
+
+  it('sends cancellation emails after a successful cancel', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+    });
+    let emailCalled = false;
+    const result = await cancelGenericBooking(rawToken, undefined, {
+      ...baseDeps(booking),
+      sendCancellationEmails: async (params) => {
+        emailCalled = true;
+        assert.equal(params.bookingId, booking.id);
+        assert.equal(params.customerEmail, booking.customer_email);
+        return { customer: true, admin: true };
+      },
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(emailCalled, true);
+  });
+
+  it('does not send cancellation emails when the DB update fails', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+    });
+    let emailCalled = false;
+    const result = await cancelGenericBooking(rawToken, undefined, {
+      ...baseDeps(booking),
+      cancelBookingInDb: async () => null,
+      sendCancellationEmails: async () => {
+        emailCalled = true;
+        return { customer: true, admin: true };
+      },
+    });
+
+    assertError(result, 'invalid_state');
+    assert.equal(emailCalled, false);
   });
 });

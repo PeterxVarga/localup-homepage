@@ -33,6 +33,7 @@ import { isValidManagementTokenFormat } from './tokenValidation';
 import type { BookingServiceContext } from '../booking-service/types';
 import { resolveGenericAvailabilityProvider } from '../calendar/genericAvailabilityProvider';
 import type { GenericCalendarProvider } from '../calendar/genericAvailabilityResolver';
+import { sendGenericBookingCancellation } from '../email/generic/index.ts';
 
 export interface CancelGenericBookingResult {
   success: true;
@@ -60,7 +61,12 @@ interface BookingRow {
   id: string;
   site_id: string;
   service_id: string;
+  customer_name: string;
+  customer_email: string;
+  customer_phone: string | null;
+  customer_notes: string | null;
   slot_start: string;
+  slot_end: string;
   booking_status: 'pending' | 'booked' | 'cancelled';
   management_token_encrypted: string;
   management_token_expires_at: string;
@@ -93,6 +99,16 @@ export interface CancelBookingDeps {
     bookingId: string;
     eventId: string;
   }) => Promise<boolean>;
+  sendCancellationEmails?: (params: {
+    bookingId: string;
+    service: BookingServiceContext;
+    customerName: string;
+    customerEmail: string;
+    phone?: string;
+    notes?: string;
+    slotStart: string;
+    slotEnd: string;
+  }) => Promise<{ customer: boolean; admin: boolean }>;
   hashToken?: (rawToken: string) => string;
   verifyToken?: (rawToken: string, encryptedToken: string) => boolean;
   now?: () => Date;
@@ -103,7 +119,7 @@ const defaultDeps: Required<CancelBookingDeps> = {
     const { data, error } = await getSupabase()
       .from('bookings')
       .select(
-        'id, site_id, service_id, slot_start, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status',
+        'id, site_id, service_id, customer_name, customer_email, customer_phone, customer_notes, slot_start, slot_end, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status',
       )
       .eq('management_token_hash', hash)
       .maybeSingle();
@@ -128,7 +144,7 @@ const defaultDeps: Required<CancelBookingDeps> = {
       .eq('id', bookingId)
       .eq('booking_status', currentStatus)
       .select(
-        'id, site_id, service_id, slot_start, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status',
+        'id, site_id, service_id, customer_name, customer_email, customer_phone, customer_notes, slot_start, slot_end, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status',
       )
       .single();
 
@@ -183,6 +199,23 @@ const defaultDeps: Required<CancelBookingDeps> = {
 
     return true;
   },
+  async sendCancellationEmails(params) {
+    try {
+      return await sendGenericBookingCancellation({
+        bookingId: params.bookingId,
+        service: params.service,
+        customerName: params.customerName,
+        customerEmail: params.customerEmail,
+        phone: params.phone,
+        notes: params.notes,
+        slotStart: params.slotStart,
+        slotEnd: params.slotEnd,
+      });
+    } catch (err) {
+      console.error('Generic cancel: cancellation email failed');
+      return { customer: false, admin: false };
+    }
+  },
   hashToken: hashManagementToken,
   verifyToken: verifyManagementToken,
   now: () => new Date(),
@@ -220,6 +253,7 @@ export async function cancelGenericBooking(
     deleteCalendarEvent,
     clearCalendarEventInDb,
     markCalendarSyncFailed,
+    sendCancellationEmails,
     hashToken,
     verifyToken,
     now,
@@ -341,6 +375,23 @@ export async function cancelGenericBooking(
           'A foglalás lemondása sikeres volt, de a naptáresemény törlése nem sikerült. Kérlek válaszolj az eredeti emailre.',
       };
     }
+  }
+
+  // Send tenant cancellation emails. Email failure is isolated and does not
+  // roll back the cancelled booking or Calendar deletion.
+  try {
+    await sendCancellationEmails({
+      bookingId: updated.id,
+      service,
+      customerName: updated.customer_name,
+      customerEmail: updated.customer_email,
+      phone: updated.customer_phone ?? undefined,
+      notes: updated.customer_notes ?? undefined,
+      slotStart: updated.slot_start,
+      slotEnd: updated.slot_end,
+    });
+  } catch (err) {
+    console.error('Generic cancel: cancellation email failed');
   }
 
   return { success: true, status: 'cancelled' };

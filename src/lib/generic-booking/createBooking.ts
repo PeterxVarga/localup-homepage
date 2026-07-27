@@ -28,6 +28,11 @@ import { computeBlockedRange, getExpectedSlotEnd } from '../booking/intervals';
 import { resolveGenericAvailabilityProvider } from '../calendar/genericAvailabilityProvider';
 import type { GenericCalendarProvider } from '../calendar/genericAvailabilityResolver';
 import type { CreateEventParams, CreateEventResult } from '../calendar/types';
+import { sendGenericBookingConfirmation } from '../email/generic/index.ts';
+import {
+  resolveSiteEmailConfig,
+  type SiteEmailConfig,
+} from '../email/generic/resolver.ts';
 import type {
   GenericBookingInput,
   GenericBookingOutcome,
@@ -63,6 +68,9 @@ export interface CreateBookingDeps {
     slotEnd: string,
     service: BookingServiceContext,
   ) => Promise<boolean>;
+  resolveSiteEmailConfig?: (
+    siteId: string,
+  ) => Promise<SiteEmailConfig>;
   resolveCalendarProvider?: (
     siteId: string,
     siteSlug: string,
@@ -89,10 +97,19 @@ export interface CreateBookingDeps {
     googleCalendarEventId: string;
   }) => Promise<boolean>;
   cancelBookingById?: (bookingId: string) => Promise<boolean>;
+  sendConfirmationEmails?: (params: {
+    bookingId: string;
+    service: BookingServiceContext;
+    input: GenericBookingInput;
+    manageToken: string;
+    slotStart: string;
+    slotEnd: string;
+  }) => Promise<{ customer: boolean; admin: boolean }>;
 }
 
 const defaultDeps: Required<CreateBookingDeps> = {
   isSlotValidAccordingToRules: defaultIsSlotValidAccordingToRules,
+  resolveSiteEmailConfig,
   async resolveCalendarProvider(siteId, siteSlug) {
     return resolveGenericAvailabilityProvider(siteId, siteSlug);
   },
@@ -196,6 +213,24 @@ const defaultDeps: Required<CreateBookingDeps> = {
 
     return true;
   },
+  async sendConfirmationEmails(params) {
+    try {
+      return await sendGenericBookingConfirmation({
+        bookingId: params.bookingId,
+        service: params.service,
+        customerName: params.input.name,
+        customerEmail: params.input.email,
+        phone: params.input.phone,
+        notes: params.input.notes,
+        slotStart: params.slotStart,
+        slotEnd: params.slotEnd,
+        manageToken: params.manageToken,
+      });
+    } catch (err) {
+      console.error('Generic create: confirmation email failed');
+      return { customer: false, admin: false };
+    }
+  },
 };
 
 export async function createGenericBooking(
@@ -205,11 +240,13 @@ export async function createGenericBooking(
 ): Promise<GenericBookingOutcome> {
   const {
     isSlotValidAccordingToRules: checkRules,
+    resolveSiteEmailConfig: resolveEmailConfig,
     resolveCalendarProvider,
     insertBooking,
     createCalendarEvent,
     updateBookingCalendarSync,
     cancelBookingById,
+    sendConfirmationEmails,
   } = { ...defaultDeps, ...deps };
 
   // 1. Duration must match the service configuration exactly.
@@ -260,7 +297,21 @@ export async function createGenericBooking(
     };
   }
 
-  // 5. Management token (stored, never returned).
+  // 5. Resolve and validate the tenant email config before creating the booking.
+  //    Missing or invalid tenant email config blocks the create flow.
+  try {
+    await resolveEmailConfig(service.siteId);
+  } catch (err) {
+    console.error('Generic create: failed to resolve tenant email config');
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message:
+        'A foglalás jelenleg nem kezelhető online. Kérlek próbáld újra később.',
+    };
+  }
+
+  // 6. Management token (stored, never returned).
   const managementToken = generateManagementToken();
   const tokenHash = hashManagementToken(managementToken);
   const tokenEncrypted = encryptManagementToken(managementToken);
@@ -353,6 +404,21 @@ export async function createGenericBooking(
       error: 'db_error',
       message: 'Something went wrong while finalizing the booking.',
     };
+  }
+
+  // 9. Send tenant confirmation emails. Email failure is isolated and does
+  //    not roll back the successful booking + Calendar sync.
+  try {
+    await sendConfirmationEmails({
+      bookingId: data.booking.id,
+      service,
+      input,
+      manageToken: managementToken,
+      slotStart: data.booking.slot_start,
+      slotEnd: data.booking.slot_end,
+    });
+  } catch (err) {
+    console.error('Generic create: confirmation email failed');
   }
 
   return {

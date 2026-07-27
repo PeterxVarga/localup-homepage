@@ -77,6 +77,18 @@ function baseDeps(overrides: Partial<CreateBookingDeps> = {}): Required<CreateBo
     async isSlotValidAccordingToRules() {
       return true;
     },
+    async resolveSiteEmailConfig() {
+      return {
+        id: 'cfg-1',
+        siteId: 'site-1',
+        displayName: 'Demo',
+        notificationEmail: 'admin@example.com',
+        replyToEmail: 'hello@example.com',
+        siteUrl: 'https://demo.example.com',
+        locale: 'hu',
+        isActive: true,
+      };
+    },
     async resolveCalendarProvider() {
       return makeProvider();
     },
@@ -166,6 +178,37 @@ describe('createGenericBooking', () => {
     assert.equal(insertCalled, false);
   });
 
+  it('does not create a booking when the tenant email config is missing', async () => {
+    let insertCalled = false;
+    let calendarCreated = false;
+    const result = await createGenericBooking(
+      baseInput,
+      serviceContext,
+      baseDeps({
+        resolveSiteEmailConfig: async () => {
+          throw new Error('email_unconfigured');
+        },
+        insertBooking: async () => {
+          insertCalled = true;
+          return {
+            ok: true,
+            booking: { id: 'should-not-happen', slot_start: slotStart, slot_end: slotEnd },
+          };
+        },
+        createCalendarEvent: async () => {
+          calendarCreated = true;
+          return { ok: true, provider: 'mock', eventId: 'evt' };
+        },
+      }),
+    );
+
+    assert.equal(result.success, false);
+    if (result.success) return;
+    assert.equal(result.error, 'service_unavailable');
+    assert.equal(insertCalled, false);
+    assert.equal(calendarCreated, false);
+  });
+
   it('cancels the booking when calendar creation fails so the slot is unblocked', async () => {
     let cancelledBookingId: string | null = null;
     const result = await createGenericBooking(
@@ -239,5 +282,42 @@ describe('createGenericBooking', () => {
     assert.equal(result.success, false);
     if (result.success) return;
     assert.equal(result.error, 'invalid_slot');
+  });
+
+  it('sends confirmation emails after a successful booking without rolling back on email failure', async () => {
+    let emailCalled = false;
+    const result = await createGenericBooking(
+      baseInput,
+      serviceContext,
+      baseDeps({
+        sendConfirmationEmails: async (params) => {
+          emailCalled = true;
+          assert.equal(params.bookingId, 'test-booking-id');
+          assert.ok(typeof params.manageToken === 'string' && params.manageToken.length > 0);
+          return { customer: false, admin: false };
+        },
+      }),
+    );
+
+    assert.equal(result.success, true);
+    assert.equal(emailCalled, true);
+  });
+
+  it('does not send emails when the booking fails', async () => {
+    let emailCalled = false;
+    const result = await createGenericBooking(
+      baseInput,
+      serviceContext,
+      baseDeps({
+        insertBooking: async () => ({ ok: false, errorCode: '23P01' }),
+        sendConfirmationEmails: async () => {
+          emailCalled = true;
+          return { customer: true, admin: true };
+        },
+      }),
+    );
+
+    assert.equal(result.success, false);
+    assert.equal(emailCalled, false);
   });
 });
