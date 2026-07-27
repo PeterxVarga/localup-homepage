@@ -20,9 +20,11 @@ import type { BookingServiceContext } from '../../booking-service/types';
 const serviceContext: BookingServiceContext = {
   siteId: '11111111-1111-1111-1111-111111111111',
   siteSlug: 'demo',
+  siteName: 'Demo Site',
   timezone: 'Europe/Budapest',
   serviceId: '22222222-2222-2222-2222-222222222222',
   serviceSlug: 'cosmetic-treatment',
+  serviceName: 'Cosmetic Treatment',
   scheduleId: '33333333-3333-3333-3333-333333333333',
   durationMinutes: 75,
   slotIntervalMinutes: 30,
@@ -67,6 +69,15 @@ function baseDeps(
     lookupByTokenHash: async () => booking,
     loadServiceContext: async () => serviceContext,
     cancelBookingInDb: async () => booking,
+    resolveCalendarProvider: async () => ({
+      async getFreeBusy() { return []; },
+      async createEvent() { return { ok: false, provider: 'mock', error: 'not implemented' }; },
+      async patchEvent() { return { ok: false, provider: 'mock', eventId: '', error: 'not implemented' }; },
+      async deleteEvent() { return { ok: true, provider: 'mock', eventId: '' }; },
+    }),
+    deleteCalendarEvent: async () => true,
+    clearCalendarEventInDb: async () => true,
+    markCalendarSyncFailed: async () => true,
     hashToken: () => 'hash-123',
     verifyToken: () => true,
     now: () => now,
@@ -215,44 +226,53 @@ describe('cancelGenericBooking', () => {
     assertError(result, 'cutoff_passed');
   });
 
-  it('returns service_unavailable when the booking has a calendar event id', async () => {
+  it('deletes the tenant Calendar event when one exists', async () => {
     const rawToken = generateManagementToken();
     const { booking } = makeBooking({
       google_calendar_event_id: 'evt_123',
-      management_token_hash: hashManagementToken(rawToken),
-      management_token_encrypted: encryptManagementToken(rawToken),
-    });
-    let called = false;
-    const result = await cancelGenericBooking(rawToken, undefined, {
-      ...baseDeps(booking),
-      cancelBookingInDb: async () => {
-        called = true;
-        return booking;
-      },
-    });
-
-    assertError(result, 'service_unavailable');
-    assert.equal(called, false);
-  });
-
-  it('returns service_unavailable when calendar_sync_status is synced', async () => {
-    const rawToken = generateManagementToken();
-    const { booking } = makeBooking({
       calendar_sync_status: 'synced',
       management_token_hash: hashManagementToken(rawToken),
       management_token_encrypted: encryptManagementToken(rawToken),
     });
-    let called = false;
+    let deletedEventId: string | null = null;
+    let clearedBookingId: string | null = null;
     const result = await cancelGenericBooking(rawToken, undefined, {
       ...baseDeps(booking),
-      cancelBookingInDb: async () => {
-        called = true;
-        return booking;
+      deleteCalendarEvent: async (_provider, eventId) => {
+        deletedEventId = eventId;
+        return true;
+      },
+      clearCalendarEventInDb: async ({ bookingId }) => {
+        clearedBookingId = bookingId;
+        return true;
+      },
+    });
+
+    assert.equal(result.success, true);
+    assert.equal(deletedEventId, 'evt_123');
+    assert.equal(clearedBookingId, booking.id);
+  });
+
+  it('returns service_unavailable when calendar deletion fails', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      google_calendar_event_id: 'evt_123',
+      calendar_sync_status: 'synced',
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+    });
+    let markedBookingId: string | null = null;
+    const result = await cancelGenericBooking(rawToken, undefined, {
+      ...baseDeps(booking),
+      deleteCalendarEvent: async () => false,
+      markCalendarSyncFailed: async ({ bookingId }) => {
+        markedBookingId = bookingId;
+        return true;
       },
     });
 
     assertError(result, 'service_unavailable');
-    assert.equal(called, false);
+    assert.equal(markedBookingId, booking.id);
   });
 
   it('works even if the service is inactive', async () => {

@@ -17,6 +17,7 @@ import { BookingServiceError } from '../booking-service/types';
 interface SiteRow {
   id: string;
   slug: string;
+  name: string;
   timezone: string;
   is_active: boolean;
 }
@@ -26,6 +27,7 @@ interface ServiceRow {
   site_id: string;
   schedule_id: string;
   slug: string;
+  name: string;
   duration_minutes: number;
   slot_interval_minutes: number;
   minimum_notice_minutes: number;
@@ -50,6 +52,7 @@ const SERVICE_FIELDS = [
   'site_id',
   'schedule_id',
   'slug',
+  'name',
   'duration_minutes',
   'slot_interval_minutes',
   'minimum_notice_minutes',
@@ -65,10 +68,11 @@ const SERVICE_FIELDS = [
 
 function mapServiceRow(
   row: ServiceRow,
-): Omit<BookingServiceContext, 'siteSlug' | 'timezone'> {
+): Omit<BookingServiceContext, 'siteSlug' | 'siteName' | 'timezone'> {
   return {
     serviceId: row.id,
     serviceSlug: row.slug,
+    serviceName: row.name,
     siteId: row.site_id,
     scheduleId: row.schedule_id,
     durationMinutes: row.duration_minutes,
@@ -112,11 +116,11 @@ async function loadServiceRow(serviceId: string): Promise<ServiceRow> {
 async function loadSiteAndSchedule(
   siteId: string,
   scheduleId: string,
-): Promise<{ timezone: string; siteSlug: string }> {
+): Promise<{ timezone: string; siteSlug: string; siteName: string }> {
   const [siteRes, scheduleRes] = await Promise.all([
     getSupabase()
       .from('sites')
-      .select('id, slug, timezone, is_active')
+      .select('id, slug, name, timezone, is_active')
       .eq('id', siteId)
       .eq('is_active', true)
       .maybeSingle(),
@@ -164,7 +168,7 @@ async function loadSiteAndSchedule(
     );
   }
 
-  return { timezone: site.timezone, siteSlug: site.slug };
+  return { timezone: site.timezone, siteSlug: site.slug, siteName: site.name };
 }
 
 async function loadContext(
@@ -180,7 +184,7 @@ async function loadContext(
     );
   }
 
-  const { timezone, siteSlug } = await loadSiteAndSchedule(
+  const { timezone, siteSlug, siteName } = await loadSiteAndSchedule(
     service.site_id,
     service.schedule_id,
   );
@@ -188,6 +192,7 @@ async function loadContext(
   return {
     ...mapServiceRow(service),
     siteSlug,
+    siteName,
     timezone,
   };
 }

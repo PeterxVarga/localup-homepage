@@ -20,9 +20,11 @@ import type { BookingServiceContext } from '../../booking-service/types';
 const serviceContext: BookingServiceContext = {
   siteId: '11111111-1111-1111-1111-111111111111',
   siteSlug: 'demo',
+  siteName: 'Demo Site',
   timezone: 'Europe/Budapest',
   serviceId: '22222222-2222-2222-2222-222222222222',
   serviceSlug: 'cosmetic-treatment',
+  serviceName: 'Cosmetic Treatment',
   scheduleId: '33333333-3333-3333-3333-333333333333',
   durationMinutes: 75,
   slotIntervalMinutes: 30,

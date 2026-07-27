@@ -8,7 +8,10 @@
 //   used by the public slot list.
 // - Computes blocked_start / blocked_end from service buffers.
 // - Creates a management token but does NOT expose it to the caller.
-// - Does not create Calendar events or send emails in this slice.
+// - Creates a tenant Calendar event and links it to the booking.
+//   Fail-closed: if the Calendar provider is unavailable or the event
+//   creation fails, the booking is compensated (cancelled) so the slot
+//   does not remain blocked.
 // ============================================================
 
 import { getSupabase } from '../supabase';
@@ -17,9 +20,14 @@ import {
   hashManagementToken,
   encryptManagementToken,
 } from '../tokens/crypto';
-import { isSlotValidAccordingToRules } from '../booking/validateSlot';
+import {
+  isSlotValidAccordingToRules as defaultIsSlotValidAccordingToRules,
+} from '../booking/validateSlot';
 import type { BookingServiceContext } from '../booking-service/types';
 import { computeBlockedRange, getExpectedSlotEnd } from '../booking/intervals';
+import { resolveGenericAvailabilityProvider } from '../calendar/genericAvailabilityProvider';
+import type { GenericCalendarProvider } from '../calendar/genericAvailabilityResolver';
+import type { CreateEventParams, CreateEventResult } from '../calendar/types';
 import type {
   GenericBookingInput,
   GenericBookingOutcome,
@@ -34,10 +42,176 @@ function getTokenExpiresAt(slotEnd: string): string {
   ).toISOString();
 }
 
+function buildEventSummary(service: BookingServiceContext): string {
+  return `${service.siteName} — ${service.serviceName}`;
+}
+
+function buildEventDescription(input: GenericBookingInput): string {
+  return [
+    `Név: ${input.name}`,
+    `Email: ${input.email}`,
+    input.phone ? `Telefon: ${input.phone}` : undefined,
+    input.notes ? `Megjegyzés: ${input.notes}` : undefined,
+  ]
+    .filter((line): line is string => typeof line === 'string')
+    .join('\n');
+}
+
+export interface CreateBookingDeps {
+  isSlotValidAccordingToRules?: (
+    slotStart: string,
+    slotEnd: string,
+    service: BookingServiceContext,
+  ) => Promise<boolean>;
+  resolveCalendarProvider?: (
+    siteId: string,
+    siteSlug: string,
+  ) => Promise<GenericCalendarProvider>;
+  insertBooking?: (params: {
+    siteId: string;
+    serviceId: string;
+    input: GenericBookingInput;
+    blockedStart: string;
+    blockedEnd: string;
+    tokenHash: string;
+    tokenEncrypted: string;
+    tokenExpiresAt: string;
+  }) => Promise<
+    | { ok: true; booking: { id: string; slot_start: string; slot_end: string } }
+    | { ok: false; errorCode: string }
+  >;
+  createCalendarEvent?: (
+    provider: GenericCalendarProvider,
+    params: CreateEventParams,
+  ) => Promise<CreateEventResult>;
+  updateBookingCalendarSync?: (params: {
+    bookingId: string;
+    googleCalendarEventId: string;
+  }) => Promise<boolean>;
+  cancelBookingById?: (bookingId: string) => Promise<boolean>;
+}
+
+const defaultDeps: Required<CreateBookingDeps> = {
+  isSlotValidAccordingToRules: defaultIsSlotValidAccordingToRules,
+  async resolveCalendarProvider(siteId, siteSlug) {
+    return resolveGenericAvailabilityProvider(siteId, siteSlug);
+  },
+  async insertBooking(params) {
+    const { data, error } = await getSupabase()
+      .from('bookings')
+      .insert({
+        site_id: params.siteId,
+        service_id: params.serviceId,
+        customer_name: params.input.name,
+        customer_email: params.input.email,
+        customer_phone: params.input.phone || null,
+        customer_notes: params.input.notes || null,
+        slot_start: params.input.slotStart,
+        slot_end: params.input.slotEnd,
+        blocked_start: params.blockedStart,
+        blocked_end: params.blockedEnd,
+        booking_status: 'booked',
+        calendar_sync_status: 'pending',
+        management_token_hash: params.tokenHash,
+        management_token_encrypted: params.tokenEncrypted,
+        management_token_expires_at: params.tokenExpiresAt,
+        locale: params.input.locale || 'hu',
+        source: 'website',
+      })
+      .select('id, slot_start, slot_end')
+      .single();
+
+    if (error) {
+      console.error('Generic booking insert failed:', error);
+      return { ok: false, errorCode: error.code };
+    }
+
+    return {
+      ok: true,
+      booking: data as { id: string; slot_start: string; slot_end: string },
+    };
+  },
+  async createCalendarEvent(provider, params) {
+    return provider.createEvent(params);
+  },
+  async updateBookingCalendarSync({ bookingId, googleCalendarEventId }) {
+    const { data, error } = await getSupabase()
+      .from('bookings')
+      .update({
+        google_calendar_event_id: googleCalendarEventId,
+        calendar_sync_status: 'synced',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId)
+      .eq('booking_status', 'booked')
+      .eq('calendar_sync_status', 'pending')
+      .is('google_calendar_event_id', null)
+      .select('id');
+
+    if (error) {
+      console.error('Generic create: failed to finalize calendar sync');
+      return false;
+    }
+
+    if (!data || data.length === 0) {
+      // Another concurrent finalization may have already written this event.
+      // Re-read the row before deciding the Calendar event is orphaned.
+      const { data: current, error: readError } = await getSupabase()
+        .from('bookings')
+        .select('google_calendar_event_id, calendar_sync_status')
+        .eq('id', bookingId)
+        .maybeSingle();
+
+      if (readError) {
+        console.error('Generic create: failed to re-read booking after finalize miss');
+        return false;
+      }
+
+      return (
+        current?.calendar_sync_status === 'synced' &&
+        current?.google_calendar_event_id === googleCalendarEventId
+      );
+    }
+
+    return true;
+  },
+  async cancelBookingById(bookingId) {
+    const { error } = await getSupabase()
+      .from('bookings')
+      .update({
+        booking_status: 'cancelled',
+        calendar_sync_status: 'failed',
+        cancelled_at: new Date().toISOString(),
+        cancel_reason: 'calendar_sync_failed',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', bookingId)
+      .eq('booking_status', 'booked')
+      .eq('calendar_sync_status', 'pending');
+
+    if (error) {
+      console.error('Generic create: failed to cancel booking after sync failure');
+      return false;
+    }
+
+    return true;
+  },
+};
+
 export async function createGenericBooking(
   input: GenericBookingInput,
   service: BookingServiceContext,
+  deps: CreateBookingDeps = {},
 ): Promise<GenericBookingOutcome> {
+  const {
+    isSlotValidAccordingToRules: checkRules,
+    resolveCalendarProvider,
+    insertBooking,
+    createCalendarEvent,
+    updateBookingCalendarSync,
+    cancelBookingById,
+  } = { ...defaultDeps, ...deps };
+
   // 1. Duration must match the service configuration exactly.
   const expectedEnd = getExpectedSlotEnd(input.slotStart, service.durationMinutes);
   const requestedEnd = new Date(input.slotEnd).toISOString();
@@ -50,7 +224,7 @@ export async function createGenericBooking(
   }
 
   // 2. Validate against the same availability rules as the public slot list.
-  const followsRules = await isSlotValidAccordingToRules(
+  const followsRules = await checkRules(
     input.slotStart,
     input.slotEnd,
     service,
@@ -71,39 +245,41 @@ export async function createGenericBooking(
     service.bufferAfterMinutes,
   );
 
-  // 4. Management token (stored, never returned).
+  // 4. Resolve the tenant Calendar provider before creating the booking.
+  //    If the provider is unavailable, no booking is created.
+  let provider: GenericCalendarProvider;
+  try {
+    provider = await resolveCalendarProvider(service.siteId, service.siteSlug);
+  } catch (err) {
+    console.error('Generic create: failed to resolve calendar provider');
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message:
+        'A foglalási időpontok átmenetileg nem kezelhetők. Kérlek próbáld újra.',
+    };
+  }
+
+  // 5. Management token (stored, never returned).
   const managementToken = generateManagementToken();
   const tokenHash = hashManagementToken(managementToken);
   const tokenEncrypted = encryptManagementToken(managementToken);
 
-  // 5. Insert with explicit tenant/service identity.
-  const { data, error } = await getSupabase()
-    .from('bookings')
-    .insert({
-      site_id: service.siteId,
-      service_id: service.serviceId,
-      customer_name: input.name,
-      customer_email: input.email,
-      customer_phone: input.phone || null,
-      customer_notes: input.notes || null,
-      slot_start: input.slotStart,
-      slot_end: input.slotEnd,
-      blocked_start: blockedStart,
-      blocked_end: blockedEnd,
-      booking_status: 'booked',
-      calendar_sync_status: 'pending',
-      management_token_hash: tokenHash,
-      management_token_encrypted: tokenEncrypted,
-      management_token_expires_at: getTokenExpiresAt(input.slotEnd),
-      locale: input.locale || 'hu',
-      source: 'website',
-    })
-    .select('id, slot_start, slot_end')
-    .single();
+  // 6. Insert with explicit tenant/service identity and pending sync status.
+  const tokenExpiresAt = getTokenExpiresAt(input.slotEnd);
+  const data = await insertBooking({
+    siteId: service.siteId,
+    serviceId: service.serviceId,
+    input,
+    blockedStart,
+    blockedEnd,
+    tokenHash,
+    tokenEncrypted,
+    tokenExpiresAt,
+  });
 
-  if (error) {
-    // Exclusion violation => another active booking already blocks this slot.
-    if (error.code === '23P01') {
+  if (!data.ok) {
+    if (data.errorCode === '23P01') {
       return {
         success: false,
         error: 'slot_taken',
@@ -112,9 +288,6 @@ export async function createGenericBooking(
       };
     }
 
-    // Any other database error is surfaced as a generic DB failure so callers
-    // do not mask real problems as slot conflicts.
-    console.error('Generic booking insert failed:', error);
     return {
       success: false,
       error: 'db_error',
@@ -122,10 +295,70 @@ export async function createGenericBooking(
     };
   }
 
+  const bookingId = data.booking.id;
+
+  // 7. Create the tenant Calendar event.
+  let calendarResult: CreateEventResult;
+  try {
+    calendarResult = await createCalendarEvent(provider, {
+      summary: buildEventSummary(service),
+      description: buildEventDescription(input),
+      start: input.slotStart,
+      end: input.slotEnd,
+      timeZone: service.timezone,
+      attendeeEmail: input.email,
+    });
+  } catch (err) {
+    console.error('Generic create: calendar event creation failed');
+    await cancelBookingById(bookingId);
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message:
+        'A foglalás naptárba írása sikertelen. Kérlek próbáld újra.',
+    };
+  }
+
+  if (!calendarResult.ok) {
+    console.error('Generic create: calendar provider returned failure');
+    await cancelBookingById(bookingId);
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message:
+        'A foglalás naptárba írása sikertelen. Kérlek próbáld újra.',
+    };
+  }
+
+  // 8. Persist the Calendar event ID and mark the booking as synced.
+  const synced = await updateBookingCalendarSync({
+    bookingId,
+    googleCalendarEventId: calendarResult.eventId,
+  });
+
+  if (!synced) {
+    // The Calendar event exists but the DB finalize failed. Best-effort
+    // cleanup: delete the orphan Calendar event and cancel the booking so
+    // the slot is not left blocked.
+    try {
+      await provider.deleteEvent(calendarResult.eventId);
+    } catch {
+      console.error('Generic create: failed to clean up orphan calendar event');
+    }
+
+    await cancelBookingById(bookingId);
+
+    return {
+      success: false,
+      error: 'db_error',
+      message: 'Something went wrong while finalizing the booking.',
+    };
+  }
+
   return {
     success: true,
-    bookingId: data.id,
-    slotStart: data.slot_start,
-    slotEnd: data.slot_end,
+    bookingId: data.booking.id,
+    slotStart: data.booking.slot_start,
+    slotEnd: data.booking.slot_end,
   };
 }

@@ -18,14 +18,16 @@ import {
   type RescheduleGenericBookingOutcome,
 } from '../rescheduleBooking';
 import type { BookingServiceContext } from '../../booking-service/types';
-import type { GenericAvailabilityProvider } from '../../calendar/genericAvailabilityResolver';
+import type { GenericCalendarProvider } from '../../calendar/genericAvailabilityResolver';
 
 const serviceContext: BookingServiceContext = {
   siteId: '11111111-1111-1111-1111-111111111111',
   siteSlug: 'demo',
+  siteName: 'Demo Site',
   timezone: 'Europe/Budapest',
   serviceId: '22222222-2222-2222-2222-222222222222',
   serviceSlug: 'cosmetic-treatment',
+  serviceName: 'Cosmetic Treatment',
   scheduleId: '33333333-3333-3333-3333-333333333333',
   durationMinutes: 75,
   slotIntervalMinutes: 30,
@@ -66,10 +68,19 @@ function makeBooking(overrides: Record<string, unknown> = {}) {
 
 function makeProvider(
   busySlots: Array<{ start: string; end: string }> = [],
-): GenericAvailabilityProvider {
+): GenericCalendarProvider {
   return {
     async getFreeBusy(_timeMin: string, _timeMax: string) {
       return busySlots;
+    },
+    async createEvent() {
+      return { ok: false, provider: 'mock', error: 'not implemented' };
+    },
+    async patchEvent() {
+      return { ok: true, provider: 'mock', eventId: '', htmlLink: undefined, meetLink: undefined };
+    },
+    async deleteEvent() {
+      return { ok: true, provider: 'mock', eventId: '' };
     },
   };
 }
@@ -94,6 +105,9 @@ function baseDeps(
         reschedule_count: 1,
       },
     }),
+    patchCalendarEvent: async () => ({ ok: true }),
+    rollbackBookingSlot: async () => true,
+    updateCalendarSyncStatus: async () => true,
     computeBlockedRange: (
       slotStart: string,
       slotEnd: string,
@@ -221,6 +235,9 @@ describe('rescheduleGenericBooking', () => {
         updateBookingSlot: async () => {
           throw new Error('db should not be called for malformed token');
         },
+        patchCalendarEvent: async () => ({ ok: true }),
+        rollbackBookingSlot: async () => true,
+        updateCalendarSyncStatus: async () => true,
         computeBlockedRange: baseDeps(makeBooking().booking).computeBlockedRange,
         getExpectedSlotEnd: baseDeps(makeBooking().booking).getExpectedSlotEnd,
         getTokenExpiresAt: baseDeps(makeBooking().booking).getTokenExpiresAt,
@@ -428,48 +445,117 @@ describe('rescheduleGenericBooking', () => {
     assert.equal(updateCalled, true);
   });
 
-  it('returns service_unavailable when the booking already has a calendar event', async () => {
+  it('patches the tenant Calendar event after a successful DB update', async () => {
     const rawToken = generateManagementToken();
     const { booking } = makeBooking({
       google_calendar_event_id: 'evt_123',
-      management_token_hash: hashManagementToken(rawToken),
-      management_token_encrypted: encryptManagementToken(rawToken),
-    });
-    let updateCalled = false;
-    const result = await rescheduleGenericBooking(
-      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
-      baseDeps(booking, {
-        updateBookingSlot: async () => {
-          updateCalled = true;
-          return { ok: true as const, booking };
-        },
-      }),
-    );
-
-    assertError(result, 'service_unavailable');
-    assert.equal(updateCalled, false);
-  });
-
-  it('returns service_unavailable when calendar_sync_status is synced', async () => {
-    const rawToken = generateManagementToken();
-    const { booking } = makeBooking({
       calendar_sync_status: 'synced',
       management_token_hash: hashManagementToken(rawToken),
       management_token_encrypted: encryptManagementToken(rawToken),
     });
-    let updateCalled = false;
+    let patchedEventId: string | null = null;
+    let patchedTimeZone: string | null = null;
+    let markedSync: { status: 'synced' | 'failed' } | null = null;
     const result = await rescheduleGenericBooking(
       { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
       baseDeps(booking, {
-        updateBookingSlot: async () => {
-          updateCalled = true;
-          return { ok: true as const, booking };
+        patchCalendarEvent: async (_provider, eventId, params) => {
+          patchedEventId = eventId;
+          patchedTimeZone = params.timeZone;
+          return { ok: true };
+        },
+        updateCalendarSyncStatus: async (params) => {
+          markedSync = { status: params.calendarSyncStatus };
+          return true;
+        },
+      }),
+    );
+
+    assert.equal(result.success, true);
+    assert.equal(patchedEventId, 'evt_123');
+    assert.equal(patchedTimeZone, serviceContext.timezone);
+    assert.equal(markedSync?.status, 'synced');
+  });
+
+  it('rolls back the DB update when calendar patch fails', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      google_calendar_event_id: 'evt_123',
+      calendar_sync_status: 'synced',
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+    });
+    let rollbackCalled = false;
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking, {
+        patchCalendarEvent: async () => ({ ok: false }),
+        rollbackBookingSlot: async (params) => {
+          rollbackCalled = true;
+          assert.equal(params.bookingId, booking.id);
+          assert.equal(params.newSlotStart, newSlotStart);
+          assert.equal(params.newSlotEnd, newSlotEnd);
+          assert.equal(params.newRescheduleCount, 1);
+          assert.equal(params.previousSlotStart, currentSlotStart);
+          assert.equal(params.previousSlotEnd, currentSlotEnd);
+          assert.equal(params.previousRescheduleCount, 0);
+          return true;
         },
       }),
     );
 
     assertError(result, 'service_unavailable');
-    assert.equal(updateCalled, false);
+    assert.equal(rollbackCalled, true);
+  });
+
+  it('guards the rollback with booking_status and new slot values', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      google_calendar_event_id: 'evt_123',
+      calendar_sync_status: 'synced',
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+    });
+    let rollbackParams: Record<string, unknown> | null = null;
+    await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking, {
+        patchCalendarEvent: async () => ({ ok: false }),
+        rollbackBookingSlot: async (params) => {
+          rollbackParams = params as unknown as Record<string, unknown>;
+          return true;
+        },
+      }),
+    );
+
+    assert.ok(rollbackParams);
+    assert.equal(rollbackParams?.newSlotStart, newSlotStart);
+    assert.equal(rollbackParams?.newRescheduleCount, 1);
+  });
+
+  it('returns service_unavailable when calendar patch fails and rollback also fails', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      google_calendar_event_id: 'evt_123',
+      calendar_sync_status: 'synced',
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+    });
+    let markedSync: { status: 'synced' | 'failed' } | null = null;
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking, {
+        patchCalendarEvent: async () => ({ ok: false }),
+        rollbackBookingSlot: async () => false,
+        updateCalendarSyncStatus: async (params) => {
+          markedSync = { status: params.calendarSyncStatus };
+          return true;
+        },
+      }),
+    );
+
+    assertError(result, 'service_unavailable');
+    assert.equal(markedSync?.status, 'failed');
   });
 
   it('returns service_unavailable for an inactive service', async () => {

@@ -52,7 +52,7 @@ import {
 import { loadActiveBookingServiceContext } from './loadServiceContext';
 import { isValidManagementTokenFormat } from './tokenValidation';
 import type { BookingServiceContext } from '../booking-service/types';
-import type { GenericAvailabilityProvider } from '../calendar/genericAvailabilityResolver';
+import type { GenericCalendarProvider } from '../calendar/genericAvailabilityResolver';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TOKEN_TTL_DAYS = 30;
@@ -134,7 +134,7 @@ export interface RescheduleBookingDeps {
   resolveAvailabilityProvider?: (
     siteId: string,
     siteSlug: string,
-  ) => Promise<GenericAvailabilityProvider>;
+  ) => Promise<GenericCalendarProvider>;
   checkSiteBookingConflict?: (
     siteId: string,
     blockedStart: string,
@@ -155,6 +155,32 @@ export interface RescheduleBookingDeps {
     rescheduledAt: string;
     tokenExpiresAt: string;
   }) => Promise<UpdateSlotOutcome>;
+  patchCalendarEvent?: (
+    provider: GenericCalendarProvider,
+    eventId: string,
+    params: { start: string; end: string; timeZone: string },
+  ) => Promise<{ ok: boolean }>;
+  rollbackBookingSlot?: (params: {
+    bookingId: string;
+    newSlotStart: string;
+    newSlotEnd: string;
+    newRescheduleCount: number;
+    previousSlotStart: string;
+    previousSlotEnd: string;
+    previousBlockedStart: string;
+    previousBlockedEnd: string;
+    previousRescheduleCount: number;
+    tokenExpiresAt: string;
+    rolledBackAt: string;
+  }) => Promise<boolean>;
+  updateCalendarSyncStatus?: (params: {
+    bookingId: string;
+    eventId: string;
+    slotStart: string;
+    slotEnd: string;
+    rescheduleCount: number;
+    calendarSyncStatus: 'synced' | 'failed';
+  }) => Promise<boolean>;
   computeBlockedRange?: (
     slotStart: string,
     slotEnd: string,
@@ -280,6 +306,58 @@ const defaultDeps: Required<RescheduleBookingDeps> = {
   resolveAvailabilityProvider: resolveGenericAvailabilityProvider,
   checkSiteBookingConflict: defaultCheckSiteBookingConflict,
   updateBookingSlot: defaultUpdateBookingSlot,
+  async patchCalendarEvent(provider, eventId, params) {
+    const result = await provider.patchEvent(eventId, params);
+    return { ok: result.ok };
+  },
+  async rollbackBookingSlot(params) {
+    const { error } = await getSupabase()
+      .from('bookings')
+      .update({
+        slot_start: params.previousSlotStart,
+        slot_end: params.previousSlotEnd,
+        blocked_start: params.previousBlockedStart,
+        blocked_end: params.previousBlockedEnd,
+        reschedule_count: params.previousRescheduleCount,
+        previous_slot_start: null,
+        previous_slot_end: null,
+        management_token_expires_at: params.tokenExpiresAt,
+        updated_at: params.rolledBackAt,
+      })
+      .eq('id', params.bookingId)
+      .eq('slot_start', params.newSlotStart)
+      .eq('slot_end', params.newSlotEnd)
+      .eq('booking_status', 'booked')
+      .eq('reschedule_count', params.newRescheduleCount);
+
+    if (error) {
+      console.error('Generic reschedule: rollback failed');
+      return false;
+    }
+
+    return true;
+  },
+  async updateCalendarSyncStatus(params) {
+    const { error } = await getSupabase()
+      .from('bookings')
+      .update({
+        calendar_sync_status: params.calendarSyncStatus,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', params.bookingId)
+      .eq('slot_start', params.slotStart)
+      .eq('slot_end', params.slotEnd)
+      .eq('booking_status', 'booked')
+      .eq('reschedule_count', params.rescheduleCount)
+      .eq('google_calendar_event_id', params.eventId);
+
+    if (error) {
+      console.error('Generic reschedule: failed to update calendar sync status');
+      return false;
+    }
+
+    return true;
+  },
   computeBlockedRange,
   getExpectedSlotEnd,
   getTokenExpiresAt: defaultGetTokenExpiresAt,
@@ -310,6 +388,9 @@ export async function rescheduleGenericBooking(
     resolveAvailabilityProvider,
     checkSiteBookingConflict,
     updateBookingSlot,
+    patchCalendarEvent,
+    rollbackBookingSlot,
+    updateCalendarSyncStatus,
     computeBlockedRange: computeBlocked,
     getExpectedSlotEnd: computeExpectedEnd,
     getTokenExpiresAt,
@@ -360,20 +441,7 @@ export async function rescheduleGenericBooking(
     };
   }
 
-  // 2. Calendar event CRUD not implemented in this slice.
-  if (
-    booking.google_calendar_event_id ||
-    booking.calendar_sync_status === 'synced'
-  ) {
-    return {
-      success: false,
-      error: 'service_unavailable',
-      message:
-        'A foglalás jelenleg nem kezelhető online. Kérlek válaszolj az eredeti emailre.',
-    };
-  }
-
-  // 3. Booking state.
+  // 2. Booking state.
   if (!['pending', 'booked'].includes(booking.booking_status)) {
     return {
       success: false,
@@ -482,11 +550,19 @@ export async function rescheduleGenericBooking(
     };
   }
 
-  // 11. Compute blocked interval including buffers.
+  // 11. Compute blocked intervals including buffers.
   const { blockedStart: newBlockedStart, blockedEnd: newBlockedEnd } =
     computeBlocked(
       newSlotStart,
       newSlotEnd,
+      service.bufferBeforeMinutes,
+      service.bufferAfterMinutes,
+    );
+
+  const { blockedStart: currentBlockedStart, blockedEnd: currentBlockedEnd } =
+    computeBlocked(
+      currentSlotStart,
+      currentSlotEnd,
       service.bufferBeforeMinutes,
       service.bufferAfterMinutes,
     );
@@ -519,7 +595,7 @@ export async function rescheduleGenericBooking(
   }
 
   // 13. Tenant Calendar freeBusy check.
-  let provider: GenericAvailabilityProvider;
+  let provider: GenericCalendarProvider;
   try {
     provider = await resolveAvailabilityProvider(
       service.siteId,
@@ -528,7 +604,6 @@ export async function rescheduleGenericBooking(
   } catch (err) {
     console.error(
       'Generic reschedule: failed to resolve availability provider',
-      err,
     );
     return {
       success: false,
@@ -599,7 +674,7 @@ export async function rescheduleGenericBooking(
       };
     }
 
-    console.error('Generic reschedule DB update failed:', updateResult);
+    console.error('Generic reschedule DB update failed');
     return {
       success: false,
       error:
@@ -609,6 +684,82 @@ export async function rescheduleGenericBooking(
           ? 'A foglalás időközben megváltozott. Kérlek frissítsd az oldalt.'
           : 'Something went wrong. Please try again.',
     };
+  }
+
+  // 15. Patch the tenant Calendar event when one exists.
+  const eventId = booking.google_calendar_event_id;
+  if (eventId) {
+    let patchOk: boolean;
+    try {
+      const patchResult = await patchCalendarEvent(provider, eventId, {
+        start: newSlotStart,
+        end: newSlotEnd,
+        timeZone: service.timezone,
+      });
+      patchOk = patchResult.ok;
+    } catch (err) {
+      console.error('Generic reschedule: calendar patch failed');
+      patchOk = false;
+    }
+
+    if (patchOk) {
+      const marked = await updateCalendarSyncStatus({
+        bookingId: booking.id,
+        eventId,
+        slotStart: newSlotStart,
+        slotEnd: newSlotEnd,
+        rescheduleCount: newRescheduleCount,
+        calendarSyncStatus: 'synced',
+      });
+
+      if (!marked) {
+        console.error('Generic reschedule: failed to mark calendar sync status');
+      }
+    } else {
+      const rolledBack = await rollbackBookingSlot({
+        bookingId: booking.id,
+        newSlotStart,
+        newSlotEnd,
+        newRescheduleCount,
+        previousSlotStart: currentSlotStart,
+        previousSlotEnd: currentSlotEnd,
+        previousBlockedStart: currentBlockedStart,
+        previousBlockedEnd: currentBlockedEnd,
+        previousRescheduleCount: currentRescheduleCount,
+        tokenExpiresAt: getTokenExpiresAt(currentSlotEnd),
+        rolledBackAt: nowDate.toISOString(),
+      });
+
+      if (!rolledBack) {
+        console.error('Generic reschedule: rollback after calendar patch failed');
+        const marked = await updateCalendarSyncStatus({
+          bookingId: booking.id,
+          eventId,
+          slotStart: newSlotStart,
+          slotEnd: newSlotEnd,
+          rescheduleCount: newRescheduleCount,
+          calendarSyncStatus: 'failed',
+        });
+
+        if (!marked) {
+          console.error('Generic reschedule: failed to mark calendar sync failed');
+        }
+
+        return {
+          success: false,
+          error: 'service_unavailable',
+          message:
+            'Az időpontmódosítás sikertelen volt, és az állapot helyreállítása sem sikerült. Kérlek válaszolj az eredeti emailre.',
+        };
+      }
+
+      return {
+        success: false,
+        error: 'service_unavailable',
+        message:
+          'Az időpontmódosítás sikertelen volt. Kérlek próbáld újra.',
+      };
+    }
   }
 
   return {

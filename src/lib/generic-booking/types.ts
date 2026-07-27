@@ -23,6 +23,7 @@ export interface GenericBookingResult {
 export type GenericBookingErrorCode =
   | 'slot_taken'
   | 'invalid_slot'
+  | 'service_unavailable'
   | 'db_error';
 
 export interface GenericBookingError {

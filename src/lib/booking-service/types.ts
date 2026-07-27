@@ -17,9 +17,11 @@ export interface BookingServiceConfig {
 export interface BookingServiceContext extends BookingServiceConfig {
   siteId: string;
   siteSlug: string;
+  siteName: string;
   timezone: string;
   serviceId: string;
   serviceSlug: string;
+  serviceName: string;
   scheduleId: string;
   publicBookingEnabled: boolean;
 }
