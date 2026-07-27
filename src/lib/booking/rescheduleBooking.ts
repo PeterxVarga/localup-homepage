@@ -424,6 +424,7 @@ export async function rescheduleBooking(
     patchResult = await googleCalendarProvider.patchEvent(eventId, {
       start: newSlotStart,
       end: newSlotEnd,
+      timeZone: 'Europe/Budapest',
     });
 
     if (!patchResult.ok) {

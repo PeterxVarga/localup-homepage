@@ -12,11 +12,17 @@ import {
   GenericAvailabilityProviderError,
   parseFreeBusyResponse,
   resolveGenericAvailabilityProvider,
+  validateCalendarEventResponse,
+  validateCreateEventParams,
+  validateEventId,
+  validateEventInterval,
+  validateTimeZone,
 } from '../genericAvailabilityResolver.ts';
 import type {
   CalendarConfig,
   FreeBusyResponse,
   GenericAvailabilityProvider,
+  GenericCalendarProvider,
   ResolverDependencies,
 } from '../genericAvailabilityResolver.ts';
 
@@ -28,17 +34,26 @@ const demoConfig: CalendarConfig = {
   encryptedRefreshToken: 'encrypted-token',
 };
 
-const mockProvider: GenericAvailabilityProvider = {
+const mockProvider: GenericCalendarProvider = {
   async getFreeBusy(timeMin: string, timeMax: string) {
     return [
       { start: timeMin, end: timeMax },
     ];
   },
+  async createEvent() {
+    return { ok: false, provider: 'mock', error: 'not implemented' };
+  },
+  async patchEvent() {
+    return { ok: false, provider: 'mock', eventId: '', error: 'not implemented' };
+  },
+  async deleteEvent() {
+    return { ok: false, provider: 'mock', eventId: '', error: 'not implemented' };
+  },
 };
 
 function makeDeps(
   configs: CalendarConfig[] | 'error',
-  providerResult: GenericAvailabilityProvider | Error = mockProvider,
+  providerResult: GenericCalendarProvider | Error = mockProvider,
 ): ResolverDependencies {
   return {
     async loadConfigs(siteId: string) {
@@ -136,12 +151,12 @@ describe('resolveGenericAvailabilityProvider', () => {
         'szepbor-kozmetika',
         makeDeps([demoConfig], new GenericAvailabilityProviderError(
           'decrypt failed',
-          'provider_decrypt_failed',
+          'provider_credentials_missing',
         )),
       ),
       (err: unknown) =>
         err instanceof GenericAvailabilityProviderError &&
-        err.code === 'provider_decrypt_failed',
+        err.code === 'provider_credentials_missing',
     );
   });
 });
@@ -345,5 +360,226 @@ describe('bindGetFreeBusy', () => {
 
     const first = result[0] as { start: string; end: string; calendarId: string };
     assert.equal(first.calendarId, 'class-calendar');
+  });
+});
+
+describe('validateEventInterval', () => {
+  it('accepts a valid positive interval', () => {
+    const result = validateEventInterval(
+      '2026-01-01T10:00:00Z',
+      '2026-01-01T11:00:00Z',
+    );
+    assert.equal(result.startMs, new Date('2026-01-01T10:00:00Z').getTime());
+    assert.equal(result.endMs, new Date('2026-01-01T11:00:00Z').getTime());
+  });
+
+  it('rejects an invalid start timestamp', () => {
+    assert.throws(
+      () => validateEventInterval('not-a-date', '2026-01-01T11:00:00Z'),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_input_invalid',
+    );
+  });
+
+  it('rejects an empty end timestamp', () => {
+    assert.throws(
+      () => validateEventInterval('2026-01-01T10:00:00Z', '   '),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_input_invalid',
+    );
+  });
+
+  it('rejects end equal to start', () => {
+    assert.throws(
+      () =>
+        validateEventInterval(
+          '2026-01-01T10:00:00Z',
+          '2026-01-01T10:00:00Z',
+        ),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_input_invalid',
+    );
+  });
+
+  it('rejects end before start', () => {
+    assert.throws(
+      () =>
+        validateEventInterval(
+          '2026-01-01T11:00:00Z',
+          '2026-01-01T10:00:00Z',
+        ),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_input_invalid',
+    );
+  });
+});
+
+describe('validateTimeZone', () => {
+  it('accepts a valid IANA timezone', () => {
+    assert.doesNotThrow(() => validateTimeZone('Europe/Budapest'));
+  });
+
+  it('accepts UTC', () => {
+    assert.doesNotThrow(() => validateTimeZone('UTC'));
+  });
+
+  it('rejects an empty timezone', () => {
+    assert.throws(
+      () => validateTimeZone(''),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_input_invalid',
+    );
+  });
+
+  it('rejects an invalid IANA timezone', () => {
+    assert.throws(
+      () => validateTimeZone('Mars/Phobos'),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_input_invalid',
+    );
+  });
+});
+
+describe('validateCreateEventParams', () => {
+  it('accepts a valid event', () => {
+    assert.doesNotThrow(() =>
+      validateCreateEventParams({
+        summary: 'Demo booking',
+        start: '2026-01-01T10:00:00Z',
+        end: '2026-01-01T11:00:00Z',
+        timeZone: 'Europe/Budapest',
+      }),
+    );
+  });
+
+  it('rejects a missing summary', () => {
+    assert.throws(
+      () =>
+        validateCreateEventParams({
+          summary: '   ',
+          start: '2026-01-01T10:00:00Z',
+          end: '2026-01-01T11:00:00Z',
+          timeZone: 'Europe/Budapest',
+        }),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_input_invalid',
+    );
+  });
+
+  it('rejects a missing timezone', () => {
+    assert.throws(
+      () =>
+        validateCreateEventParams({
+          summary: 'Demo booking',
+          start: '2026-01-01T10:00:00Z',
+          end: '2026-01-01T11:00:00Z',
+          timeZone: '',
+        }),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_input_invalid',
+    );
+  });
+
+  it('rejects an invalid IANA timezone', () => {
+    assert.throws(
+      () =>
+        validateCreateEventParams({
+          summary: 'Demo booking',
+          start: '2026-01-01T10:00:00Z',
+          end: '2026-01-01T11:00:00Z',
+          timeZone: 'NotATimeZone',
+        }),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_input_invalid',
+    );
+  });
+
+  it('rejects end <= start', () => {
+    assert.throws(
+      () =>
+        validateCreateEventParams({
+          summary: 'Demo booking',
+          start: '2026-01-01T11:00:00Z',
+          end: '2026-01-01T10:00:00Z',
+          timeZone: 'Europe/Budapest',
+        }),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_input_invalid',
+    );
+  });
+});
+
+describe('validateEventId', () => {
+  it('accepts a non-empty event ID', () => {
+    assert.doesNotThrow(() => validateEventId('event-123'));
+  });
+
+  it('rejects an empty event ID', () => {
+    assert.throws(
+      () => validateEventId(''),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_input_invalid',
+    );
+  });
+
+  it('rejects a whitespace-only event ID', () => {
+    assert.throws(
+      () => validateEventId('   '),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_input_invalid',
+    );
+  });
+});
+
+describe('validateCalendarEventResponse', () => {
+  it('accepts a valid event response', () => {
+    const result = validateCalendarEventResponse({
+      id: 'event-123',
+      htmlLink: 'https://calendar.google.com/event?eid=123',
+      hangoutLink: 'https://meet.google.com/abc',
+    });
+
+    assert.equal(result.id, 'event-123');
+    assert.equal(result.htmlLink, 'https://calendar.google.com/event?eid=123');
+    assert.equal(result.hangoutLink, 'https://meet.google.com/abc');
+  });
+
+  it('rejects an empty response', () => {
+    assert.throws(
+      () => validateCalendarEventResponse(null),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_invalid_response',
+    );
+  });
+
+  it('rejects a missing event ID', () => {
+    assert.throws(
+      () => validateCalendarEventResponse({ htmlLink: 'https://example.com' }),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_invalid_response',
+    );
+  });
+
+  it('rejects an empty event ID', () => {
+    assert.throws(
+      () => validateCalendarEventResponse({ id: '   ' }),
+      (err: unknown) =>
+        err instanceof GenericAvailabilityProviderError &&
+        err.code === 'provider_invalid_response',
+    );
   });
 });

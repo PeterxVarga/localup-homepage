@@ -15,11 +15,32 @@ export interface CalendarConfig {
   encryptedRefreshToken: string;
 }
 
+import type {
+  CreateEventParams,
+  CreateEventResult,
+  DeleteEventResult,
+  PatchEventParams,
+  PatchEventResult,
+} from './types';
+
 export interface GenericAvailabilityProvider {
   getFreeBusy(
     timeMin: string,
     timeMax: string,
   ): Promise<Array<{ start: string; end: string }>>;
+}
+
+/**
+ * Full tenant-isolated calendar provider.
+ * Extends the availability-only provider with event CRUD operations.
+ */
+export interface GenericCalendarProvider extends GenericAvailabilityProvider {
+  createEvent(params: CreateEventParams): Promise<CreateEventResult>;
+  patchEvent(
+    eventId: string,
+    params: PatchEventParams,
+  ): Promise<PatchEventResult>;
+  deleteEvent(eventId: string): Promise<DeleteEventResult>;
 }
 
 export class GenericAvailabilityProviderError extends Error {
@@ -34,11 +55,11 @@ export class GenericAvailabilityProviderError extends Error {
 
 export interface ResolverDependencies {
   loadConfigs(siteId: string): Promise<CalendarConfig[]>;
-  buildProvider(config: CalendarConfig): Promise<GenericAvailabilityProvider>;
+  buildProvider(config: CalendarConfig): Promise<GenericCalendarProvider>;
 }
 
 /**
- * Resolve the availability provider for a generic (non-audit) booking site.
+ * Resolve the calendar provider for a generic (non-audit) booking site.
  *
  * Fail-closed:
  *   - no active config            -> provider_unconfigured
@@ -49,7 +70,7 @@ export async function resolveGenericAvailabilityProvider(
   siteId: string,
   siteSlug: string,
   deps: ResolverDependencies,
-): Promise<GenericAvailabilityProvider> {
+): Promise<GenericCalendarProvider> {
   const configs = await deps.loadConfigs(siteId);
 
   if (configs.length === 0) {
@@ -161,6 +182,147 @@ export function parseFreeBusyResponse(
 
     return { start: busy.start, end: busy.end };
   });
+}
+
+/**
+ * Validate a calendar event time range.
+ *
+ * Fail-closed: rejects invalid ISO timestamps and non-positive intervals.
+ */
+export function validateEventInterval(
+  start: string,
+  end: string,
+): { startMs: number; endMs: number } {
+  if (typeof start !== 'string' || start.trim() === '') {
+    throw new GenericAvailabilityProviderError(
+      'Event start time is required',
+      'provider_input_invalid',
+    );
+  }
+
+  if (typeof end !== 'string' || end.trim() === '') {
+    throw new GenericAvailabilityProviderError(
+      'Event end time is required',
+      'provider_input_invalid',
+    );
+  }
+
+  const startMs = new Date(start).getTime();
+  const endMs = new Date(end).getTime();
+
+  if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
+    throw new GenericAvailabilityProviderError(
+      'Event start or end time is not a valid timestamp',
+      'provider_input_invalid',
+    );
+  }
+
+  if (endMs <= startMs) {
+    throw new GenericAvailabilityProviderError(
+      'Event end time must be after start time',
+      'provider_input_invalid',
+    );
+  }
+
+  return { startMs, endMs };
+}
+
+/**
+ * Validate that a timezone string is a known IANA timezone.
+ */
+export function validateTimeZone(timeZone: string): void {
+  if (typeof timeZone !== 'string' || timeZone.trim() === '') {
+    throw new GenericAvailabilityProviderError(
+      'Event timezone is required',
+      'provider_input_invalid',
+    );
+  }
+
+  try {
+    Intl.DateTimeFormat(undefined, { timeZone }).format(new Date());
+  } catch {
+    throw new GenericAvailabilityProviderError(
+      'Event timezone is not a valid IANA timezone',
+      'provider_input_invalid',
+    );
+  }
+}
+
+/**
+ * Validate create event input.
+ *
+ * Enforces the minimum required contract: non-empty summary, valid IANA
+ * timezone and a valid, positive time interval. The provider may layer
+ * additional checks on top.
+ */
+export function validateCreateEventParams(
+  params: CreateEventParams,
+): void {
+  if (!params || typeof params !== 'object') {
+    throw new GenericAvailabilityProviderError(
+      'Event parameters are required',
+      'provider_input_invalid',
+    );
+  }
+
+  if (
+    typeof params.summary !== 'string' ||
+    params.summary.trim() === ''
+  ) {
+    throw new GenericAvailabilityProviderError(
+      'Event summary is required',
+      'provider_input_invalid',
+    );
+  }
+
+  validateTimeZone(params.timeZone);
+  validateEventInterval(params.start, params.end);
+}
+
+/**
+ * Validate that a provider event ID is explicit and non-empty.
+ */
+export function validateEventId(eventId: string): void {
+  if (typeof eventId !== 'string' || eventId.trim() === '') {
+    throw new GenericAvailabilityProviderError(
+      'Event ID is required',
+      'provider_input_invalid',
+    );
+  }
+}
+
+/**
+ * Validate a Google Calendar events.insert / events.patch response.
+ *
+ * Fail-closed: the operation is only considered successful when the
+ * response contains a non-empty event ID. No credential or raw API detail
+ * is included in the error.
+ */
+export function validateCalendarEventResponse(
+  data: unknown,
+): { id: string; htmlLink?: string; hangoutLink?: string } {
+  if (!data || typeof data !== 'object') {
+    throw new GenericAvailabilityProviderError(
+      'Calendar provider returned an empty event response',
+      'provider_invalid_response',
+    );
+  }
+
+  const event = data as { id?: unknown; htmlLink?: unknown; hangoutLink?: unknown };
+
+  if (typeof event.id !== 'string' || event.id.trim() === '') {
+    throw new GenericAvailabilityProviderError(
+      'Calendar provider returned an event without a valid ID',
+      'provider_invalid_response',
+    );
+  }
+
+  return {
+    id: event.id,
+    htmlLink: typeof event.htmlLink === 'string' ? event.htmlLink : undefined,
+    hangoutLink:
+      typeof event.hangoutLink === 'string' ? event.hangoutLink : undefined,
+  };
 }
 
 /**
