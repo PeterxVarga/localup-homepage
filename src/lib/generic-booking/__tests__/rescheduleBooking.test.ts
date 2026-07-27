@@ -52,6 +52,10 @@ function makeBooking(overrides: Record<string, unknown> = {}) {
       id: 'b1111111-1111-1111-1111-111111111111',
       site_id: serviceContext.siteId,
       service_id: serviceContext.serviceId,
+      customer_name: 'Teszt Elek',
+      customer_email: 'teszt@example.com',
+      customer_phone: null,
+      customer_notes: null,
       slot_start: currentSlotStart,
       slot_end: currentSlotEnd,
       booking_status: 'booked' as const,
@@ -108,6 +112,7 @@ function baseDeps(
     patchCalendarEvent: async () => ({ ok: true }),
     rollbackBookingSlot: async () => true,
     updateCalendarSyncStatus: async () => true,
+    sendRescheduleEmails: async () => ({ customer: true, admin: true }),
     computeBlockedRange: (
       slotStart: string,
       slotEnd: string,
@@ -238,6 +243,7 @@ describe('rescheduleGenericBooking', () => {
         patchCalendarEvent: async () => ({ ok: true }),
         rollbackBookingSlot: async () => true,
         updateCalendarSyncStatus: async () => true,
+        sendRescheduleEmails: async () => ({ customer: true, admin: true }),
         computeBlockedRange: baseDeps(makeBooking().booking).computeBlockedRange,
         getExpectedSlotEnd: baseDeps(makeBooking().booking).getExpectedSlotEnd,
         getTokenExpiresAt: baseDeps(makeBooking().booking).getTokenExpiresAt,
@@ -660,5 +666,56 @@ describe('rescheduleGenericBooking', () => {
     assert.equal(result.idempotent, true);
     assert.equal(result.rescheduleCount, 0);
     assert.equal(updateCalled, false);
+  });
+
+  it('sends reschedule emails after a successful DB + Calendar patch', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      google_calendar_event_id: 'evt_123',
+      calendar_sync_status: 'synced',
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+    });
+    let emailCalled = false;
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking, {
+        sendRescheduleEmails: async (params) => {
+          emailCalled = true;
+          assert.equal(params.bookingId, booking.id);
+          assert.equal(params.oldSlotStart, currentSlotStart);
+          assert.equal(params.newSlotStart, newSlotStart);
+          return { customer: true, admin: true };
+        },
+      }),
+    );
+
+    assert.equal(result.success, true);
+    assert.equal(emailCalled, true);
+  });
+
+  it('does not send reschedule emails when the Calendar patch fails and rolls back', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      google_calendar_event_id: 'evt_123',
+      calendar_sync_status: 'synced',
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+    });
+    let emailCalled = false;
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking, {
+        patchCalendarEvent: async () => ({ ok: false }),
+        rollbackBookingSlot: async () => true,
+        sendRescheduleEmails: async () => {
+          emailCalled = true;
+          return { customer: true, admin: true };
+        },
+      }),
+    );
+
+    assertError(result, 'service_unavailable');
+    assert.equal(emailCalled, false);
   });
 });

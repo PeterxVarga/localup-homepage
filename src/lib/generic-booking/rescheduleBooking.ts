@@ -53,6 +53,7 @@ import { loadActiveBookingServiceContext } from './loadServiceContext';
 import { isValidManagementTokenFormat } from './tokenValidation';
 import type { BookingServiceContext } from '../booking-service/types';
 import type { GenericCalendarProvider } from '../calendar/genericAvailabilityResolver';
+import { sendGenericBookingReschedule } from '../email/generic/index.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const TOKEN_TTL_DAYS = 30;
@@ -99,6 +100,10 @@ interface BookingRow {
   id: string;
   site_id: string;
   service_id: string;
+  customer_name: string;
+  customer_email: string;
+  customer_phone: string | null;
+  customer_notes: string | null;
   slot_start: string;
   slot_end: string;
   booking_status: 'pending' | 'booked' | 'cancelled';
@@ -181,6 +186,19 @@ export interface RescheduleBookingDeps {
     rescheduleCount: number;
     calendarSyncStatus: 'synced' | 'failed';
   }) => Promise<boolean>;
+  sendRescheduleEmails?: (params: {
+    bookingId: string;
+    service: BookingServiceContext;
+    customerName: string;
+    customerEmail: string;
+    phone?: string;
+    notes?: string;
+    oldSlotStart: string;
+    oldSlotEnd: string;
+    newSlotStart: string;
+    newSlotEnd: string;
+    rescheduleCount: number;
+  }) => Promise<{ customer: boolean; admin: boolean }>;
   computeBlockedRange?: (
     slotStart: string,
     slotEnd: string,
@@ -201,7 +219,7 @@ async function defaultLookupByTokenHash(hash: string): Promise<BookingRow | null
   const { data, error } = await getSupabase()
     .from('bookings')
     .select(
-      'id, site_id, service_id, slot_start, slot_end, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status, reschedule_count',
+      'id, site_id, service_id, customer_name, customer_email, customer_phone, customer_notes, slot_start, slot_end, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status, reschedule_count',
     )
     .eq('management_token_hash', hash)
     .maybeSingle();
@@ -270,7 +288,7 @@ async function defaultUpdateBookingSlot(params: {
     .eq('booking_status', params.currentStatus)
     .eq('reschedule_count', params.currentRescheduleCount)
     .select(
-      'id, site_id, service_id, slot_start, slot_end, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status, reschedule_count',
+      'id, site_id, service_id, customer_name, customer_email, customer_phone, customer_notes, slot_start, slot_end, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status, reschedule_count',
     )
     .single();
 
@@ -358,6 +376,26 @@ const defaultDeps: Required<RescheduleBookingDeps> = {
 
     return true;
   },
+  async sendRescheduleEmails(params) {
+    try {
+      return await sendGenericBookingReschedule({
+        bookingId: params.bookingId,
+        service: params.service,
+        customerName: params.customerName,
+        customerEmail: params.customerEmail,
+        phone: params.phone,
+        notes: params.notes,
+        oldSlotStart: params.oldSlotStart,
+        oldSlotEnd: params.oldSlotEnd,
+        slotStart: params.newSlotStart,
+        slotEnd: params.newSlotEnd,
+        rescheduleCount: params.rescheduleCount,
+      });
+    } catch (err) {
+      console.error('Generic reschedule: email failed');
+      return { customer: false, admin: false };
+    }
+  },
   computeBlockedRange,
   getExpectedSlotEnd,
   getTokenExpiresAt: defaultGetTokenExpiresAt,
@@ -391,6 +429,7 @@ export async function rescheduleGenericBooking(
     patchCalendarEvent,
     rollbackBookingSlot,
     updateCalendarSyncStatus,
+    sendRescheduleEmails,
     computeBlockedRange: computeBlocked,
     getExpectedSlotEnd: computeExpectedEnd,
     getTokenExpiresAt,
@@ -760,6 +799,26 @@ export async function rescheduleGenericBooking(
           'Az időpontmódosítás sikertelen volt. Kérlek próbáld újra.',
       };
     }
+  }
+
+  // 16. Send tenant reschedule emails. Email failure is isolated and does not
+  //     roll back the successful DB + Calendar patch.
+  try {
+    await sendRescheduleEmails({
+      bookingId: updateResult.booking.id,
+      service,
+      customerName: updateResult.booking.customer_name,
+      customerEmail: updateResult.booking.customer_email,
+      phone: updateResult.booking.customer_phone ?? undefined,
+      notes: updateResult.booking.customer_notes ?? undefined,
+      oldSlotStart: currentSlotStart,
+      oldSlotEnd: currentSlotEnd,
+      newSlotStart,
+      newSlotEnd,
+      rescheduleCount: updateResult.booking.reschedule_count,
+    });
+  } catch (err) {
+    console.error('Generic reschedule: email failed');
   }
 
   return {
