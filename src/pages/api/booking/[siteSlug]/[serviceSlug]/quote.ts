@@ -88,7 +88,7 @@ export const POST: APIRoute = async ({ params, request }) => {
       return jsonResponse({ error: err.code }, status);
     }
 
-    console.error('public quote error:', err);
+    console.error('public quote error: unexpected failure');
     return jsonResponse({ error: 'service_unavailable' }, 503);
   }
 };

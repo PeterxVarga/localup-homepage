@@ -9,6 +9,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  calculateQuoteForService,
   getPublicPricingConfig,
   getPublicQuote,
   PublicQuoteServiceError,
@@ -199,6 +200,65 @@ describe('getPublicPricingConfig', () => {
       (err: unknown) =>
         err instanceof PublicQuoteServiceError &&
         err.code === 'service_unavailable',
+    );
+  });
+});
+
+describe('calculateQuoteForService', () => {
+  it('calculates a quote for an already-resolved service context', async () => {
+    const quote = await calculateQuoteForService(
+      baseService,
+      [],
+      { loadOptions: async () => ({ groups: [], options: [] }) },
+    );
+
+    assert.equal(quote.priceMinor, 12000);
+    assert.equal(quote.currency, 'HUF');
+    assert.equal(quote.priceMode, 'fixed');
+    assert.equal(quote.durationMinutes, 60);
+    assert.deepEqual(quote.selectedOptions, []);
+  });
+
+  it('applies option deltas without re-resolving slugs', async () => {
+    const group = makeGroup({
+      id: 'g1',
+      slug: 'extras',
+      selectionMode: 'single',
+      isRequired: true,
+      minSelections: 1,
+    });
+    const option = makeOption({
+      id: '11111111-1111-4111-9111-111111111111',
+      slug: 'deep-clean',
+      optionGroupId: 'g1',
+      priceDeltaMinor: 2500,
+      durationDeltaMinutes: 15,
+    });
+
+    const quote = await calculateQuoteForService(
+      baseService,
+      ['11111111-1111-4111-9111-111111111111'],
+      { loadOptions: async () => ({ groups: [group], options: [option] }) },
+    );
+
+    assert.equal(quote.priceMinor, 14500);
+    assert.equal(quote.durationMinutes, 75);
+    assert.equal(quote.selectedOptions.length, 1);
+    assert.equal(quote.selectedOptions[0]?.groupSlug, 'extras');
+    assert.equal(quote.selectedOptions[0]?.optionSlug, 'deep-clean');
+  });
+
+  it('rejects invalid optionIds without publicBookingEnabled check', async () => {
+    await assert.rejects(
+      () =>
+        calculateQuoteForService(
+          { ...baseService, publicBookingEnabled: false },
+          ['not-a-uuid'],
+          { loadOptions: async () => ({ groups: [], options: [] }) },
+        ),
+      (err: unknown) =>
+        err instanceof PublicQuoteServiceError &&
+        err.code === 'invalid_request',
     );
   });
 });

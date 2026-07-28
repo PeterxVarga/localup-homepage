@@ -41,6 +41,9 @@ export const genericBookingRequestSchema = z
       message: 'Slot end must be a valid ISO datetime with offset',
       offset: true,
     }),
+    optionIds: z
+      .array(z.uuid({ message: 'Each optionId must be a valid UUID' }))
+      .max(20, 'optionIds must contain at most 20 items'),
     locale: z.enum(SUPPORTED_LOCALES).optional(),
     honeypot: z.string().max(200).optional(),
   })

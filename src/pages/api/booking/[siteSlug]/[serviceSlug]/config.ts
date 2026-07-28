@@ -50,7 +50,7 @@ export const GET: APIRoute = async ({ params }) => {
       return jsonResponse({ error: err.code }, status);
     }
 
-    console.error('public pricing config error:', err);
+    console.error('public pricing config error: unexpected failure');
     return jsonResponse({ error: 'service_unavailable' }, 503);
   }
 };

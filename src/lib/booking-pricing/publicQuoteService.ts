@@ -261,6 +261,84 @@ function mapPublicSelectedOption(
   };
 }
 
+function buildPublicQuoteResponse(quote: ReturnType<typeof calculateBookingQuote>): PublicQuoteResponse {
+  return {
+    priceMinor: quote.priceMinor,
+    currency: quote.currency,
+    priceMode: quote.priceMode,
+    durationMinutes: quote.durationMinutes,
+    selectedOptions: quote.selectedOptions.map(mapPublicSelectedOption),
+  };
+}
+
+function handleBookingPricingError(err: BookingPricingError): never {
+  if (isSelectionErrorCode(err.code)) {
+    throw new PublicQuoteServiceError(
+      'invalid_selection',
+      'The selected options are invalid',
+    );
+  }
+
+  if (isConfigErrorCode(err.code)) {
+    throw new PublicQuoteServiceError(
+      'service_unavailable',
+      'Pricing configuration error',
+    );
+  }
+
+  throw new PublicQuoteServiceError(
+    'service_unavailable',
+    'Pricing calculation failed',
+  );
+}
+
+/**
+ * Calculate a server-side quote for an already-resolved service context and
+ * the option IDs selected by the client.
+ *
+ * This is the single quote entry point used by public endpoints and by
+ * internal booking/reschedule flows. It never trusts client-supplied prices,
+ * durations, labels, modes, or currencies.
+ *
+ * @throws PublicQuoteServiceError with code 'invalid_request' for malformed
+ *         input, 'invalid_selection' for option/selection rule violations,
+ *         or 'service_unavailable' for config failures.
+ */
+export async function calculateQuoteForService(
+  service: BookingServiceContext,
+  rawOptionIds: unknown,
+  deps: Partial<Pick<PublicQuoteServiceDeps, 'loadOptions'>> = {},
+): Promise<PublicQuoteResponse> {
+  const optionIds = validateOptionIds(rawOptionIds);
+  const { loadOptions } = { ...defaultDeps, ...deps };
+
+  const { groups, options } = await loadTenantOptions(service, loadOptions);
+
+  try {
+    const quote = calculateBookingQuote({
+      service,
+      groups,
+      options,
+      selectedOptionIds: optionIds,
+    });
+
+    return buildPublicQuoteResponse(quote);
+  } catch (err) {
+    if (err instanceof PublicQuoteServiceError) {
+      throw err;
+    }
+
+    if (err instanceof BookingPricingError) {
+      handleBookingPricingError(err);
+    }
+
+    throw new PublicQuoteServiceError(
+      'service_unavailable',
+      'Pricing calculation failed',
+    );
+  }
+}
+
 /**
  * Load the public pricing configuration for a site/service slug pair.
  *
@@ -298,60 +376,13 @@ export async function getPublicQuote(
   rawOptionIds: unknown,
   deps: Partial<PublicQuoteServiceDeps> = {},
 ): Promise<PublicQuoteResponse> {
-  const optionIds = validateOptionIds(rawOptionIds);
-  const { loadServiceContext, loadOptions } = { ...defaultDeps, ...deps };
+  const { loadServiceContext } = { ...defaultDeps, ...deps };
 
   const service = await resolvePublicService(
     siteSlug,
     serviceSlug,
     loadServiceContext,
   );
-  const { groups, options } = await loadTenantOptions(service, loadOptions);
 
-  try {
-    const quote = calculateBookingQuote({
-      service,
-      groups,
-      options,
-      selectedOptionIds: optionIds,
-    });
-
-    return {
-      priceMinor: quote.priceMinor,
-      currency: quote.currency,
-      priceMode: quote.priceMode,
-      durationMinutes: quote.durationMinutes,
-      selectedOptions: quote.selectedOptions.map(mapPublicSelectedOption),
-    };
-  } catch (err) {
-    if (err instanceof PublicQuoteServiceError) {
-      throw err;
-    }
-
-    if (err instanceof BookingPricingError) {
-      if (isSelectionErrorCode(err.code)) {
-        throw new PublicQuoteServiceError(
-          'invalid_selection',
-          'The selected options are invalid',
-        );
-      }
-
-      if (isConfigErrorCode(err.code)) {
-        throw new PublicQuoteServiceError(
-          'service_unavailable',
-          'Pricing configuration error',
-        );
-      }
-
-      throw new PublicQuoteServiceError(
-        'service_unavailable',
-        'Pricing calculation failed',
-      );
-    }
-
-    throw new PublicQuoteServiceError(
-      'service_unavailable',
-      'Pricing calculation failed',
-    );
-  }
+  return calculateQuoteForService(service, rawOptionIds, deps);
 }

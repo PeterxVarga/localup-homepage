@@ -112,6 +112,50 @@ interface BookingRow {
   google_calendar_event_id: string | null;
   calendar_sync_status: 'pending' | 'synced' | 'failed';
   reschedule_count: number;
+  pricing_snapshot: Record<string, unknown> | null;
+}
+
+function getSnapshotDurationMinutes(booking: BookingRow): number | null {
+  const snapshot = booking.pricing_snapshot;
+  const hasDurationField =
+    snapshot && typeof snapshot === 'object' && 'durationMinutes' in snapshot;
+
+  if (hasDurationField) {
+    const duration = (snapshot as Record<string, unknown>).durationMinutes;
+    if (
+      typeof duration === 'number' &&
+      Number.isFinite(duration) &&
+      Number.isInteger(duration) &&
+      duration >= 5 &&
+      duration <= 480 &&
+      duration % 5 === 0
+    ) {
+      return duration;
+    }
+
+    // Explicit but invalid duration: fail-closed; do not hide a corrupt
+    // snapshot by falling back to the stored slot interval.
+    return null;
+  }
+
+  // Legacy or {} snapshot: derive duration from the stored slot interval.
+  const startMs = new Date(booking.slot_start).getTime();
+  const endMs = new Date(booking.slot_end).getTime();
+  if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
+    return null;
+  }
+
+  const diffMinutes = (endMs - startMs) / 60_000;
+  if (
+    Number.isInteger(diffMinutes) &&
+    diffMinutes >= 5 &&
+    diffMinutes <= 480 &&
+    diffMinutes % 5 === 0
+  ) {
+    return diffMinutes;
+  }
+
+  return null;
 }
 
 interface UpdateSlotResult {
@@ -208,6 +252,7 @@ export interface RescheduleBookingDeps {
   getExpectedSlotEnd?: (
     slotStart: string,
     service: BookingServiceContext,
+    durationMinutes?: number,
   ) => string;
   getTokenExpiresAt?: (slotEnd: string) => string;
   hashToken?: (rawToken: string) => string;
@@ -219,13 +264,13 @@ async function defaultLookupByTokenHash(hash: string): Promise<BookingRow | null
   const { data, error } = await getSupabase()
     .from('bookings')
     .select(
-      'id, site_id, service_id, customer_name, customer_email, customer_phone, customer_notes, slot_start, slot_end, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status, reschedule_count',
+      'id, site_id, service_id, customer_name, customer_email, customer_phone, customer_notes, slot_start, slot_end, booking_status, management_token_encrypted, management_token_expires_at, google_calendar_event_id, calendar_sync_status, reschedule_count, pricing_snapshot',
     )
     .eq('management_token_hash', hash)
     .maybeSingle();
 
   if (error) {
-    console.error('Generic reschedule lookup failed:', error);
+    console.error('Generic reschedule lookup failed: unexpected failure');
     return null;
   }
 
@@ -248,7 +293,7 @@ async function defaultCheckSiteBookingConflict(
     .neq('id', excludeBookingId);
 
   if (error) {
-    console.error('Generic reschedule site conflict check failed:', error);
+    console.error('Generic reschedule site conflict check failed: unexpected failure');
     throw new Error('site_conflict_check_failed');
   }
 
@@ -494,7 +539,7 @@ export async function rescheduleGenericBooking(
   try {
     service = await loadServiceContext(booking.service_id);
   } catch (err) {
-    console.error('Generic reschedule: failed to load service context', err);
+    console.error('Generic reschedule: failed to load service context');
     return {
       success: false,
       error: 'service_unavailable',
@@ -506,7 +551,21 @@ export async function rescheduleGenericBooking(
   const currentSlotEnd = booking.slot_end;
 
   // 5. Optimistic concurrency guard (epoch-based comparison).
-  if (toEpochMs(expectedOldSlotStart) !== toEpochMs(currentSlotStart)) {
+  let currentSlotStartMs: number;
+  let currentSlotEndMs: number;
+  try {
+    currentSlotStartMs = toEpochMs(currentSlotStart);
+    currentSlotEndMs = toEpochMs(currentSlotEnd);
+  } catch {
+    console.error('Generic reschedule: stored slot timestamps are invalid');
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message: 'A foglalás adatai érvénytelenek.',
+    };
+  }
+
+  if (toEpochMs(expectedOldSlotStart) !== currentSlotStartMs) {
     return {
       success: false,
       error: 'booking_changed',
@@ -515,12 +574,23 @@ export async function rescheduleGenericBooking(
     };
   }
 
-  // 6. New slot duration must match the service configuration.
+  // 6. New slot duration is governed by the original booking's pricing
+  //    snapshot, so the booked option set is preserved during reschedule.
+  const snapshotDuration = getSnapshotDurationMinutes(booking);
+  if (snapshotDuration === null) {
+    console.error('Generic reschedule: missing or invalid pricing snapshot duration');
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message: 'A foglalás árazási adatai nem állnak rendelkezésre.',
+    };
+  }
+
   let newSlotEnd: string;
   try {
-    newSlotEnd = computeExpectedEnd(newSlotStart, service);
+    newSlotEnd = computeExpectedEnd(newSlotStart, service, snapshotDuration);
   } catch (err) {
-    console.error('Generic reschedule: invalid new slot start', err);
+    console.error('Generic reschedule: invalid new slot start');
     return {
       success: false,
       error: 'invalid_slot',
@@ -550,7 +620,7 @@ export async function rescheduleGenericBooking(
   try {
     followsRules = await checkRules(newSlotStart, newSlotEnd, service, nowDate);
   } catch (err) {
-    console.error('Generic reschedule: availability rule check failed', err);
+    console.error('Generic reschedule: availability rule check failed');
     return {
       success: false,
       error: 'service_unavailable',
@@ -616,7 +686,7 @@ export async function rescheduleGenericBooking(
       booking.id,
     );
   } catch (err) {
-    console.error('Generic reschedule: site conflict check failed', err);
+    console.error('Generic reschedule: site conflict check failed');
     return {
       success: false,
       error: 'service_unavailable',
@@ -673,7 +743,7 @@ export async function rescheduleGenericBooking(
       };
     }
   } catch (err) {
-    console.error('Generic reschedule: freeBusy check failed', err);
+    console.error('Generic reschedule: freeBusy check failed');
     return {
       success: false,
       error: 'service_unavailable',

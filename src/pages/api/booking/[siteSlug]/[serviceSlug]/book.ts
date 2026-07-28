@@ -17,6 +17,10 @@ import {
 } from '../../../../../lib/calendar/genericAvailabilityProvider';
 import { getBookingServiceContext } from '../../../../../lib/booking-service/queries';
 import {
+  calculateQuoteForService,
+  PublicQuoteServiceError,
+} from '../../../../../lib/booking-pricing/publicQuoteService';
+import {
   isRateLimited,
   recordRequest,
   getRetryAfterSeconds,
@@ -104,7 +108,7 @@ export const POST: APIRoute = async ({ params, request }) => {
   try {
     service = await getBookingServiceContext(siteSlug, serviceSlug);
   } catch (err) {
-    console.error('generic booking service context error:', err);
+    console.error('generic booking service context error: unexpected failure');
     return jsonResponse(
       {
         success: false,
@@ -126,7 +130,42 @@ export const POST: APIRoute = async ({ params, request }) => {
     );
   }
 
-  // Full availability revalidation using the same generator as the slot list.
+  // Resolve server-side quote first. The client never sends price, duration,
+  // currency, or mode — only option IDs.
+  let quote;
+  try {
+    quote = await calculateQuoteForService(service, input.optionIds);
+  } catch (err) {
+    if (err instanceof PublicQuoteServiceError) {
+      const status = err.code === 'service_unavailable' ? 503 : 400;
+      return jsonResponse(
+        {
+          success: false,
+          error: err.code,
+          message: err.message,
+        },
+        status,
+      );
+    }
+
+    console.error('generic booking quote error: unexpected failure');
+    return jsonResponse(
+      {
+        success: false,
+        error: 'service_unavailable',
+        message: 'Booking service is not configured',
+      },
+      503,
+    );
+  }
+
+  const effectiveService = {
+    ...service,
+    durationMinutes: quote.durationMinutes,
+  };
+
+  // Full availability revalidation using the same generator as the slot list,
+  // governed by the server-side quote duration.
   try {
     const requestedStart = new Date(input.slotStart).toISOString();
     const requestedEnd = new Date(input.slotEnd).toISOString();
@@ -135,7 +174,7 @@ export const POST: APIRoute = async ({ params, request }) => {
       service.siteSlug,
     );
     const availableDays = await generateAvailableSlots(
-      service,
+      effectiveService,
       bindGetFreeBusy(provider),
     );
     const available = availableDays.some((day) =>
@@ -157,7 +196,7 @@ export const POST: APIRoute = async ({ params, request }) => {
       );
     }
   } catch (err) {
-    console.error('generic availability revalidation error:', err);
+    console.error('generic availability revalidation error: unexpected failure');
     return jsonResponse(
       {
         success: false,
@@ -169,7 +208,7 @@ export const POST: APIRoute = async ({ params, request }) => {
     );
   }
 
-  const result = await createGenericBooking(input, service);
+  const result = await createGenericBooking(input, input.optionIds, service);
   if (!result.success) {
     const statusMap: Record<
       typeof result.error,
@@ -178,6 +217,7 @@ export const POST: APIRoute = async ({ params, request }) => {
       invalid_slot: 400,
       slot_taken: 409,
       db_error: 500,
+      service_unavailable: 503,
     };
     return jsonResponse(result, statusMap[result.error] ?? 503);
   }

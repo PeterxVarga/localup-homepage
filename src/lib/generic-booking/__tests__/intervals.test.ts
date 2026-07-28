@@ -197,6 +197,7 @@ describe('genericBookingRequestSchema', () => {
     notes: 'Notes',
     slotStart: '2025-08-01T09:00:00+00:00',
     slotEnd: '2025-08-01T10:15:00+00:00',
+    optionIds: [],
     locale: 'hu',
   };
 

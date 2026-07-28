@@ -33,13 +33,39 @@ import {
   resolveSiteEmailConfig,
   type SiteEmailConfig,
 } from '../email/generic/resolver.ts';
+import {
+  calculateQuoteForService,
+  PublicQuoteServiceError,
+} from '../booking-pricing/publicQuoteService';
+import type { PublicQuoteResponse } from '../booking-pricing/types';
 import type {
   GenericBookingInput,
   GenericBookingOutcome,
+  GenericBookingErrorCode,
 } from './types';
 
 const TOKEN_TTL_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function buildPricingSnapshot(
+  service: BookingServiceContext,
+  quote: PublicQuoteResponse,
+): Record<string, unknown> {
+  return {
+    version: 1,
+    service: {
+      slug: service.serviceSlug,
+      name: service.serviceName,
+      basePriceMinor: service.basePriceMinor,
+      baseDurationMinutes: service.durationMinutes,
+    },
+    priceMinor: quote.priceMinor,
+    priceMode: quote.priceMode,
+    currency: quote.currency,
+    durationMinutes: quote.durationMinutes,
+    selectedOptions: quote.selectedOptions,
+  };
+}
 
 function getTokenExpiresAt(slotEnd: string): string {
   return new Date(
@@ -84,10 +110,18 @@ export interface CreateBookingDeps {
     tokenHash: string;
     tokenEncrypted: string;
     tokenExpiresAt: string;
+    calculatedPriceMinor: number | null;
+    priceMode: string | null;
+    currency: string | null;
+    pricingSnapshot: Record<string, unknown>;
   }) => Promise<
     | { ok: true; booking: { id: string; slot_start: string; slot_end: string } }
     | { ok: false; errorCode: string }
   >;
+  calculateQuote?: (
+    service: BookingServiceContext,
+    optionIds: string[],
+  ) => Promise<PublicQuoteResponse>;
   createCalendarEvent?: (
     provider: GenericCalendarProvider,
     params: CreateEventParams,
@@ -113,6 +147,7 @@ const defaultDeps: Required<CreateBookingDeps> = {
   async resolveCalendarProvider(siteId, siteSlug) {
     return resolveGenericAvailabilityProvider(siteId, siteSlug);
   },
+  calculateQuote: calculateQuoteForService,
   async insertBooking(params) {
     const { data, error } = await getSupabase()
       .from('bookings')
@@ -134,12 +169,17 @@ const defaultDeps: Required<CreateBookingDeps> = {
         management_token_expires_at: params.tokenExpiresAt,
         locale: params.input.locale || 'hu',
         source: 'website',
+        calculated_price_minor: params.calculatedPriceMinor,
+        price_mode: params.priceMode,
+        currency: params.currency,
+        pricing_snapshot: params.pricingSnapshot,
+        intake_data: {},
       })
       .select('id, slot_start, slot_end')
       .single();
 
     if (error) {
-      console.error('Generic booking insert failed:', error);
+      console.error('Generic booking insert failed: unexpected failure');
       return { ok: false, errorCode: error.code };
     }
 
@@ -235,6 +275,7 @@ const defaultDeps: Required<CreateBookingDeps> = {
 
 export async function createGenericBooking(
   input: GenericBookingInput,
+  optionIds: string[],
   service: BookingServiceContext,
   deps: CreateBookingDeps = {},
 ): Promise<GenericBookingOutcome> {
@@ -242,6 +283,7 @@ export async function createGenericBooking(
     isSlotValidAccordingToRules: checkRules,
     resolveSiteEmailConfig: resolveEmailConfig,
     resolveCalendarProvider,
+    calculateQuote,
     insertBooking,
     createCalendarEvent,
     updateBookingCalendarSync,
@@ -249,22 +291,53 @@ export async function createGenericBooking(
     sendConfirmationEmails,
   } = { ...defaultDeps, ...deps };
 
-  // 1. Duration must match the service configuration exactly.
-  const expectedEnd = getExpectedSlotEnd(input.slotStart, service.durationMinutes);
+  // 0. Calculate the server-side quote from option IDs. The client never
+  //    sends price, duration, currency, or mode.
+  let quote: PublicQuoteResponse;
+  try {
+    quote = await calculateQuote(service, optionIds);
+  } catch (err) {
+    if (err instanceof PublicQuoteServiceError) {
+      const errorCode: GenericBookingErrorCode =
+        err.code === 'service_unavailable' ? 'service_unavailable' : 'invalid_slot';
+      return {
+        success: false,
+        error: errorCode,
+        message: err.message,
+      };
+    }
+
+    console.error('Generic create: failed to calculate quote');
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message:
+        'A foglalás jelenleg nem kezelhető online. Kérlek próbáld újra később.',
+    };
+  }
+
+  const effectiveService: BookingServiceContext = {
+    ...service,
+    durationMinutes: quote.durationMinutes,
+  };
+
+  // 1. Duration must match the server-side calculated quote.
+  const expectedEnd = getExpectedSlotEnd(input.slotStart, quote.durationMinutes);
   const requestedEnd = new Date(input.slotEnd).toISOString();
   if (expectedEnd !== requestedEnd) {
     return {
       success: false,
       error: 'invalid_slot',
-      message: 'Slot duration does not match the service configuration.',
+      message: 'Slot duration does not match the selected options.',
     };
   }
 
-  // 2. Validate against the same availability rules as the public slot list.
+  // 2. Validate against the same availability rules as the public slot list,
+  //    using the dynamic duration from the quote.
   const followsRules = await checkRules(
     input.slotStart,
     input.slotEnd,
-    service,
+    effectiveService,
   );
   if (!followsRules) {
     return {
@@ -278,8 +351,8 @@ export async function createGenericBooking(
   const { blockedStart, blockedEnd } = computeBlockedRange(
     input.slotStart,
     input.slotEnd,
-    service.bufferBeforeMinutes,
-    service.bufferAfterMinutes,
+    effectiveService.bufferBeforeMinutes,
+    effectiveService.bufferAfterMinutes,
   );
 
   // 4. Resolve the tenant Calendar provider before creating the booking.
@@ -316,8 +389,10 @@ export async function createGenericBooking(
   const tokenHash = hashManagementToken(managementToken);
   const tokenEncrypted = encryptManagementToken(managementToken);
 
-  // 6. Insert with explicit tenant/service identity and pending sync status.
+  // 6. Insert with explicit tenant/service identity, pending sync status,
+  //    and server-side pricing snapshot.
   const tokenExpiresAt = getTokenExpiresAt(input.slotEnd);
+  const pricingSnapshot = buildPricingSnapshot(service, quote);
   const data = await insertBooking({
     siteId: service.siteId,
     serviceId: service.serviceId,
@@ -327,6 +402,10 @@ export async function createGenericBooking(
     tokenHash,
     tokenEncrypted,
     tokenExpiresAt,
+    calculatedPriceMinor: quote.priceMinor,
+    priceMode: quote.priceMinor === null ? null : quote.priceMode,
+    currency: quote.priceMinor === null ? null : quote.currency,
+    pricingSnapshot,
   });
 
   if (!data.ok) {

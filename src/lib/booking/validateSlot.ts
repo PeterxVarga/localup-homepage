@@ -41,12 +41,18 @@ export async function isSlotValidAccordingToRules(
   );
 }
 
-/** Compute the expected end using the service-configured slot duration. */
+/** Compute the expected end using the service-configured slot duration
+ *  or an explicit duration override (used for reschedule pricing snapshots).
+ */
 export function getExpectedSlotEnd(
   slotStart: string,
   service: BookingServiceContext,
+  durationMinutes?: number,
 ): string {
-  return getExpectedSlotEndFromDuration(slotStart, service.durationMinutes);
+  return getExpectedSlotEndFromDuration(
+    slotStart,
+    durationMinutes ?? service.durationMinutes,
+  );
 }
 
 export function isSameSlot(
