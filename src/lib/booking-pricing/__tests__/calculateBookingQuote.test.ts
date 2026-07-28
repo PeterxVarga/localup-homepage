@@ -10,8 +10,8 @@ import {
   calculateBookingQuote,
 } from '../calculateBookingQuote';
 import { BookingPricingError } from '../types';
+import type { BookingServiceContext } from '../../booking-service/types';
 import type {
-  BookingServiceContext,
   BookingServiceOptionGroup,
   BookingServiceOption,
 } from '../types';

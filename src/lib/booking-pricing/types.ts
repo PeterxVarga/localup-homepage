@@ -73,3 +73,52 @@ export class BookingPricingError extends Error {
 }
 
 export type BookingServiceContextWithPricing = BookingServiceContext;
+
+export interface PublicServiceConfig {
+  slug: string;
+  name: string;
+  pricingMode: PricingMode;
+  basePriceMinor: number | null;
+  currency: string;
+  baseDurationMinutes: number;
+}
+
+export interface PublicOptionConfig {
+  id: string;
+  slug: string;
+  label: string;
+  priceDeltaMinor: number;
+  durationDeltaMinutes: number;
+}
+
+export interface PublicOptionGroupConfig {
+  slug: string;
+  label: string;
+  selectionMode: SelectionMode;
+  isRequired: boolean;
+  minSelections: number;
+  maxSelections: number;
+  options: PublicOptionConfig[];
+}
+
+export interface PublicPricingConfig {
+  service: PublicServiceConfig;
+  optionGroups: PublicOptionGroupConfig[];
+}
+
+export interface PublicSelectedOption {
+  id: string;
+  groupSlug: string;
+  optionSlug: string;
+  label: string;
+  priceDeltaMinor: number;
+  durationDeltaMinutes: number;
+}
+
+export interface PublicQuoteResponse {
+  priceMinor: number | null;
+  currency: string;
+  priceMode: PricingMode;
+  durationMinutes: number;
+  selectedOptions: PublicSelectedOption[];
+}
