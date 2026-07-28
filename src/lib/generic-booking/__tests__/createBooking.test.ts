@@ -50,6 +50,7 @@ const baseInput: GenericBookingInput = {
   notes: 'Megjegyzés',
   slotStart,
   slotEnd,
+  optionIds: [],
   locale: 'hu',
 };
 
@@ -105,6 +106,18 @@ function baseDeps(overrides: Partial<CreateBookingDeps> = {}): Required<CreateBo
         },
       };
     },
+    async calculateQuote(service) {
+      return {
+        priceMinor: service.basePriceMinor,
+        currency: service.currency,
+        priceMode: service.pricingMode,
+        durationMinutes: service.durationMinutes,
+        selectedOptions: [],
+      };
+    },
+    async sendConfirmationEmails() {
+      return { customer: true, admin: true };
+    },
     async createCalendarEvent(provider, params) {
       return provider.createEvent(params);
     },
@@ -121,11 +134,12 @@ function baseDeps(overrides: Partial<CreateBookingDeps> = {}): Required<CreateBo
 describe('createGenericBooking', () => {
   it('creates a fully synced booking', async () => {
     let inserted = false;
-    let createParams: Parameters<CreateBookingDeps['createCalendarEvent']>[1] | null = null;
+    let createParams: Parameters<Required<CreateBookingDeps>['createCalendarEvent']>[1] | null = null;
     let syncedEventId: string | null = null;
 
     const result = await createGenericBooking(
       baseInput,
+      [],
       serviceContext,
       baseDeps({
         createCalendarEvent: async (_provider, params) => {
@@ -160,6 +174,7 @@ describe('createGenericBooking', () => {
     let insertCalled = false;
     const result = await createGenericBooking(
       baseInput,
+      [],
       serviceContext,
       baseDeps({
         resolveCalendarProvider: async () => {
@@ -186,6 +201,7 @@ describe('createGenericBooking', () => {
     let calendarCreated = false;
     const result = await createGenericBooking(
       baseInput,
+      [],
       serviceContext,
       baseDeps({
         resolveSiteEmailConfig: async () => {
@@ -216,6 +232,7 @@ describe('createGenericBooking', () => {
     let cancelledBookingId: string | null = null;
     const result = await createGenericBooking(
       baseInput,
+      [],
       serviceContext,
       baseDeps({
         createCalendarEvent: async () => ({
@@ -252,6 +269,7 @@ describe('createGenericBooking', () => {
 
     const result = await createGenericBooking(
       baseInput,
+      [],
       serviceContext,
       baseDeps({
         resolveCalendarProvider: async () => makeTrackingProvider(),
@@ -278,6 +296,7 @@ describe('createGenericBooking', () => {
   it('returns invalid_slot when the duration does not match the service', async () => {
     const result = await createGenericBooking(
       { ...baseInput, slotEnd: '2025-09-01T11:00:00.000Z' },
+      [],
       serviceContext,
       baseDeps(),
     );
@@ -291,6 +310,7 @@ describe('createGenericBooking', () => {
     let emailCalled = false;
     const result = await createGenericBooking(
       baseInput,
+      [],
       serviceContext,
       baseDeps({
         sendConfirmationEmails: async (params) => {
@@ -310,6 +330,7 @@ describe('createGenericBooking', () => {
     let emailCalled = false;
     const result = await createGenericBooking(
       baseInput,
+      [],
       serviceContext,
       baseDeps({
         insertBooking: async () => ({ ok: false, errorCode: '23P01' }),
@@ -322,5 +343,135 @@ describe('createGenericBooking', () => {
 
     assert.equal(result.success, false);
     assert.equal(emailCalled, false);
+  });
+
+  it('uses the server-side quote duration for slot validation and blocked range', async () => {
+    const slotStart90 = '2025-09-01T10:00:00.000Z';
+    const slotEnd90 = '2025-09-01T11:30:00.000Z';
+    let insertParams: Parameters<Required<CreateBookingDeps>['insertBooking']>[0] | null = null;
+
+    const result = await createGenericBooking(
+      {
+        ...baseInput,
+        slotStart: slotStart90,
+        slotEnd: slotEnd90,
+        optionIds: ['11111111-1111-4111-9111-111111111111'],
+      },
+      ['11111111-1111-4111-9111-111111111111'],
+      serviceContext,
+      baseDeps({
+        calculateQuote: async () => ({
+          priceMinor: 15000,
+          currency: 'HUF',
+          priceMode: 'estimated',
+          durationMinutes: 90,
+          selectedOptions: [
+            {
+              id: '11111111-1111-4111-9111-111111111111',
+              groupSlug: 'extras',
+              optionSlug: 'deep-clean',
+              label: 'Deep clean',
+              priceDeltaMinor: 3000,
+              durationDeltaMinutes: 15,
+            },
+          ],
+        }),
+        insertBooking: async (params) => {
+          insertParams = params;
+          return {
+            ok: true,
+            booking: {
+              id: 'test-booking-id',
+              slot_start: params.input.slotStart,
+              slot_end: params.input.slotEnd,
+            },
+          };
+        },
+      }),
+    );
+
+    assert.equal(result.success, true);
+    assert.ok(insertParams);
+    if (!insertParams) return;
+    assert.equal(insertParams.input.slotEnd, slotEnd90);
+    // 90 min slot + 15 min before + 15 min after => 2h blocked window.
+    assert.equal(
+      new Date(insertParams.blockedEnd).getTime() -
+        new Date(insertParams.blockedStart).getTime(),
+      2 * 60 * 60 * 1000,
+    );
+    assert.equal(insertParams.calculatedPriceMinor, 15000);
+    assert.equal(insertParams.priceMode, 'estimated');
+    assert.equal(insertParams.currency, 'HUF');
+    assert.equal(insertParams.pricingSnapshot.durationMinutes, 90);
+    assert.equal(
+      insertParams.pricingSnapshot.selectedOptions[0]?.id,
+      '11111111-1111-4111-9111-111111111111',
+    );
+  });
+
+  it('rejects a slot that does not match the server-side quote duration', async () => {
+    const result = await createGenericBooking(
+      baseInput,
+      ['11111111-1111-4111-9111-111111111111'],
+      serviceContext,
+      baseDeps({
+        calculateQuote: async () => ({
+          priceMinor: 15000,
+          currency: 'HUF',
+          priceMode: 'estimated',
+          durationMinutes: 90,
+          selectedOptions: [],
+        }),
+      }),
+    );
+
+    assert.equal(result.success, false);
+    if (result.success) return;
+    assert.equal(result.error, 'invalid_slot');
+  });
+
+  it('stores null scalar pricing fields when the quote price is null', async () => {
+    let insertParams: Parameters<Required<CreateBookingDeps>['insertBooking']>[0] | null = null;
+
+    const result = await createGenericBooking(
+      {
+        ...baseInput,
+        slotStart: '2025-09-01T10:00:00.000Z',
+        slotEnd: '2025-09-01T11:00:00.000Z',
+      },
+      [],
+      serviceContext,
+      baseDeps({
+        calculateQuote: async () => ({
+          priceMinor: null,
+          currency: 'HUF',
+          priceMode: 'fixed',
+          durationMinutes: 60,
+          selectedOptions: [],
+        }),
+        insertBooking: async (params) => {
+          insertParams = params;
+          return {
+            ok: true,
+            booking: {
+              id: 'test-booking-id',
+              slot_start: params.input.slotStart,
+              slot_end: params.input.slotEnd,
+            },
+          };
+        },
+      }),
+    );
+
+    assert.equal(result.success, true);
+    assert.ok(insertParams);
+    if (!insertParams) return;
+    assert.equal(insertParams.calculatedPriceMinor, null);
+    assert.equal(insertParams.priceMode, null);
+    assert.equal(insertParams.currency, null);
+    assert.equal(insertParams.pricingSnapshot.priceMinor, null);
+    assert.equal(insertParams.pricingSnapshot.priceMode, 'fixed');
+    assert.equal(insertParams.pricingSnapshot.currency, 'HUF');
   });
 });

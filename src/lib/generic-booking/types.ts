@@ -10,6 +10,7 @@ export interface GenericBookingInput {
   notes?: string;
   slotStart: string;
   slotEnd: string;
+  optionIds: string[];
   locale?: string;
 }
 

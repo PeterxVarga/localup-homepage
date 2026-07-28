@@ -68,6 +68,7 @@ function makeBooking(overrides: Record<string, unknown> = {}) {
       google_calendar_event_id: null,
       calendar_sync_status: 'pending' as const,
       reschedule_count: 0,
+      pricing_snapshot: { durationMinutes: serviceContext.durationMinutes },
       ...overrides,
     },
   };
@@ -129,9 +130,14 @@ function baseDeps(
         new Date(slotEnd).getTime() + after * 60_000,
       ).toISOString(),
     }),
-    getExpectedSlotEnd: (start: string, service: BookingServiceContext) =>
+    getExpectedSlotEnd: (
+      start: string,
+      service: BookingServiceContext,
+      durationMinutes?: number,
+    ) =>
       new Date(
-        new Date(start).getTime() + service.durationMinutes * 60_000,
+        new Date(start).getTime() +
+          (durationMinutes ?? service.durationMinutes) * 60_000,
       ).toISOString(),
     getTokenExpiresAt: (slotEnd: string) =>
       new Date(
@@ -669,6 +675,93 @@ describe('rescheduleGenericBooking', () => {
     assert.equal(result.idempotent, true);
     assert.equal(result.rescheduleCount, 0);
     assert.equal(updateCalled, false);
+  });
+
+  it('uses the booking pricing snapshot duration for the new slot', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+      pricing_snapshot: { durationMinutes: 90 },
+    });
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking),
+    );
+
+    assert.equal(result.success, true);
+    if (!result.success) return;
+    assert.equal(result.newSlotEnd, '2025-09-02T11:30:00.000Z');
+  });
+
+  it('falls back to the stored slot duration when the snapshot is null', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+      pricing_snapshot: null,
+    });
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking),
+    );
+
+    assert.equal(result.success, true);
+    if (!result.success) return;
+    assert.equal(result.newSlotEnd, newSlotEnd);
+  });
+
+  it('falls back to the stored slot duration for an empty legacy snapshot', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+      pricing_snapshot: {},
+    });
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking),
+    );
+
+    assert.equal(result.success, true);
+    if (!result.success) return;
+    assert.equal(result.newSlotEnd, newSlotEnd);
+  });
+
+  it('returns service_unavailable when the snapshot duration is invalid', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+      pricing_snapshot: { durationMinutes: 7 },
+    });
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking),
+    );
+
+    assert.equal(result.success, false);
+    if (result.success) return;
+    assert.equal(result.error, 'service_unavailable');
+  });
+
+  it('returns service_unavailable when the stored slot interval is invalid', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+      pricing_snapshot: null,
+      slot_start: 'not-a-date',
+      slot_end: 'also-not-a-date',
+    });
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking),
+    );
+
+    assert.equal(result.success, false);
+    if (result.success) return;
+    assert.equal(result.error, 'service_unavailable');
   });
 
   it('sends reschedule emails after a successful DB + Calendar patch', async () => {
