@@ -2,6 +2,9 @@
 // Booking service — domain types
 // ============================================================
 
+export type PricingMode = 'fixed' | 'estimated';
+export type SelectionMode = 'single' | 'multiple';
+
 export interface BookingServiceConfig {
   durationMinutes: number;
   slotIntervalMinutes: number;
@@ -24,6 +27,9 @@ export interface BookingServiceContext extends BookingServiceConfig {
   serviceName: string;
   scheduleId: string;
   publicBookingEnabled: boolean;
+  pricingMode: PricingMode;
+  basePriceMinor: number | null;
+  currency: string;
 }
 
 export class BookingServiceError extends Error {

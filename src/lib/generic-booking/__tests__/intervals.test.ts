@@ -34,6 +34,9 @@ const service75Min: BookingServiceContext = {
   rescheduleCutoffHours: 12,
   maxReschedules: 2,
   publicBookingEnabled: true,
+  pricingMode: 'fixed',
+  basePriceMinor: null,
+  currency: 'HUF',
 };
 
 describe('computeBlockedRange', () => {

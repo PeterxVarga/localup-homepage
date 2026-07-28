@@ -1,0 +1,359 @@
+// ============================================================
+// Booking pricing — pure quote calculator
+//
+// The calculator is a pure function: it reads no database, writes no
+// booking, calls no calendar/email, and trusts no client-supplied labels,
+// prices, durations, or modes. The caller may only pass option IDs.
+// ============================================================
+
+import type {
+  BookingQuote,
+  BookingQuoteInput,
+  BookingServiceOption,
+  BookingServiceOptionGroup,
+  PricingMode,
+  SelectedOptionQuote,
+} from './types';
+import { BookingPricingError } from './types';
+
+const MIN_DURATION_MINUTES = 5;
+const MAX_DURATION_MINUTES = 480;
+const DURATION_STEP_MINUTES = 5;
+
+function assertServiceContract(service: BookingQuoteInput['service']): void {
+  if (service.pricingMode !== 'fixed' && service.pricingMode !== 'estimated') {
+    throw new BookingPricingError(
+      `Invalid service pricing mode: ${service.pricingMode}`,
+      'invalid_pricing_mode',
+    );
+  }
+
+  if (!service.currency || !/^[A-Z]{3}$/.test(service.currency)) {
+    throw new BookingPricingError(
+      `Invalid service currency: ${service.currency}`,
+      'invalid_currency',
+    );
+  }
+
+  if (
+    !Number.isInteger(service.durationMinutes) ||
+    service.durationMinutes < MIN_DURATION_MINUTES ||
+    service.durationMinutes > MAX_DURATION_MINUTES ||
+    service.durationMinutes % DURATION_STEP_MINUTES !== 0
+  ) {
+    throw new BookingPricingError(
+      `Invalid service base duration: ${service.durationMinutes}`,
+      'invalid_base_duration',
+    );
+  }
+}
+
+function validateNoDuplicateOptionIds(selectedOptionIds: string[]): void {
+  const seen = new Set<string>();
+  for (const id of selectedOptionIds) {
+    if (seen.has(id)) {
+      throw new BookingPricingError(
+        `Duplicate option ID: ${id}`,
+        'duplicate_option_id',
+      );
+    }
+    seen.add(id);
+  }
+}
+
+function buildOptionMap(
+  options: BookingServiceOption[],
+): Map<string, BookingServiceOption> {
+  const map = new Map<string, BookingServiceOption>();
+  for (const option of options) {
+    map.set(option.id, option);
+  }
+  return map;
+}
+
+function buildGroupMap(
+  groups: BookingServiceOptionGroup[],
+): Map<string, BookingServiceOptionGroup> {
+  const map = new Map<string, BookingServiceOptionGroup>();
+  for (const group of groups) {
+    map.set(group.id, group);
+  }
+  return map;
+}
+
+function resolveSelectedOptions(
+  selectedOptionIds: string[],
+  optionMap: Map<string, BookingServiceOption>,
+  groupMap: Map<string, BookingServiceOptionGroup>,
+  serviceSiteId: string,
+  serviceId: string,
+): BookingServiceOption[] {
+  const selected: BookingServiceOption[] = [];
+
+  for (const optionId of selectedOptionIds) {
+    const option = optionMap.get(optionId);
+
+    if (!option) {
+      throw new BookingPricingError(
+        `Unknown option ID: ${optionId}`,
+        'unknown_option_id',
+      );
+    }
+
+    if (!option.isActive) {
+      throw new BookingPricingError(
+        `Inactive option selected: ${optionId}`,
+        'inactive_option',
+      );
+    }
+
+    if (option.siteId !== serviceSiteId || option.serviceId !== serviceId) {
+      throw new BookingPricingError(
+        `Option ${optionId} does not belong to the requested service/site`,
+        'option_service_mismatch',
+      );
+    }
+
+    const group = groupMap.get(option.optionGroupId);
+
+    if (!group) {
+      throw new BookingPricingError(
+        `Missing or inactive group for option ${optionId}`,
+        'missing_group_configuration',
+      );
+    }
+
+    if (!group.isActive) {
+      throw new BookingPricingError(
+        `Inactive group selected: ${group.id}`,
+        'inactive_group',
+      );
+    }
+
+    if (
+      group.siteId !== serviceSiteId ||
+      group.serviceId !== serviceId ||
+      group.id !== option.optionGroupId
+    ) {
+      throw new BookingPricingError(
+        `Group ${group.id} does not belong to the requested service/site`,
+        'group_service_mismatch',
+      );
+    }
+
+    selected.push(option);
+  }
+
+  return selected;
+}
+
+function validateGroupSelections(
+  groups: BookingServiceOptionGroup[],
+  selectedByGroupId: Map<string, BookingServiceOption[]>,
+): void {
+  for (const group of groups) {
+    if (!group.isActive) {
+      continue;
+    }
+
+    const selected = selectedByGroupId.get(group.id) ?? [];
+    const count = selected.length;
+
+    if (group.selectionMode === 'single') {
+      if (count > 1) {
+        throw new BookingPricingError(
+          `Single-selection group ${group.slug} accepts at most one option`,
+          'single_group_too_many',
+        );
+      }
+
+      if (group.isRequired && count < 1) {
+        throw new BookingPricingError(
+          `Required single-selection group ${group.slug} needs one option`,
+          'required_group_not_met',
+        );
+      }
+    }
+
+    if (count < group.minSelections) {
+      throw new BookingPricingError(
+        `Group ${group.slug} requires at least ${group.minSelections} selection(s)`,
+        'min_selections_not_met',
+      );
+    }
+
+    if (count > group.maxSelections) {
+      throw new BookingPricingError(
+        `Group ${group.slug} accepts at most ${group.maxSelections} selection(s)`,
+        'max_selections_exceeded',
+      );
+    }
+  }
+}
+
+function buildSelectedOptionsQuote(
+  selected: BookingServiceOption[],
+  groupMap: Map<string, BookingServiceOptionGroup>,
+): SelectedOptionQuote[] {
+  const withGroup = selected.map((option) => {
+    const group = groupMap.get(option.optionGroupId);
+    if (!group) {
+      throw new BookingPricingError(
+        `Missing group for option ${option.id}`,
+        'missing_group_configuration',
+      );
+    }
+
+    return {
+      option,
+      group,
+    };
+  });
+
+  withGroup.sort((a, b) => {
+    if (a.group.sortOrder !== b.group.sortOrder) {
+      return a.group.sortOrder - b.group.sortOrder;
+    }
+    if (a.option.sortOrder !== b.option.sortOrder) {
+      return a.option.sortOrder - b.option.sortOrder;
+    }
+    return a.option.id.localeCompare(b.option.id);
+  });
+
+  return withGroup.map(({ option, group }) => ({
+    optionId: option.id,
+    groupId: group.id,
+    groupSlug: group.slug,
+    optionSlug: option.slug,
+    label: option.label,
+    priceDeltaMinor: option.priceDeltaMinor,
+    durationDeltaMinutes: option.durationDeltaMinutes,
+  }));
+}
+
+function calculateFinalDuration(
+  baseDuration: number,
+  selected: BookingServiceOption[],
+): number {
+  const duration = selected.reduce(
+    (sum, option) => sum + option.durationDeltaMinutes,
+    baseDuration,
+  );
+
+  if (
+    !Number.isInteger(duration) ||
+    duration < MIN_DURATION_MINUTES ||
+    duration > MAX_DURATION_MINUTES ||
+    duration % DURATION_STEP_MINUTES !== 0
+  ) {
+    throw new BookingPricingError(
+      `Calculated duration ${duration} is outside the allowed range or not a multiple of ${DURATION_STEP_MINUTES}`,
+      'invalid_calculated_duration',
+    );
+  }
+
+  return duration;
+}
+
+function calculateFinalPrice(
+  basePriceMinor: number | null,
+  selected: BookingServiceOption[],
+  currency: string,
+): number | null {
+  if (basePriceMinor === null) {
+    return null;
+  }
+
+  if (!Number.isSafeInteger(basePriceMinor) || basePriceMinor < 0) {
+    throw new BookingPricingError(
+      `Invalid base price: ${basePriceMinor}`,
+      'invalid_base_price',
+    );
+  }
+
+  const totalDelta = selected.reduce((sum, option) => {
+    const next = sum + option.priceDeltaMinor;
+    if (!Number.isSafeInteger(next)) {
+      throw new BookingPricingError(
+        'Price delta sum exceeds safe integer range',
+        'price_overflow',
+      );
+    }
+    return next;
+  }, 0);
+
+  const price = basePriceMinor + totalDelta;
+
+  if (!Number.isSafeInteger(price)) {
+    throw new BookingPricingError(
+      'Calculated price exceeds safe integer range',
+      'price_overflow',
+    );
+  }
+
+  if (price < 0) {
+    throw new BookingPricingError(
+      `Calculated price ${price} ${currency} is negative`,
+      'negative_price',
+    );
+  }
+
+  return price;
+}
+
+/**
+ * Calculate a deterministic booking quote from a service context,
+ * active option groups, active options, and the option IDs selected
+ * by the client.
+ *
+ * The client may only submit option IDs. Prices, durations, labels,
+ * modes, and currencies are always taken from the trusted service
+ * configuration loaded by the server.
+ */
+export function calculateBookingQuote(
+  input: BookingQuoteInput,
+): BookingQuote {
+  const { service, groups, options, selectedOptionIds } = input;
+
+  assertServiceContract(service);
+  validateNoDuplicateOptionIds(selectedOptionIds);
+
+  const optionMap = buildOptionMap(options);
+  const groupMap = buildGroupMap(groups);
+
+  const selected = resolveSelectedOptions(
+    selectedOptionIds,
+    optionMap,
+    groupMap,
+    service.siteId,
+    service.serviceId,
+  );
+
+  const selectedByGroupId = new Map<string, BookingServiceOption[]>();
+  for (const option of selected) {
+    const list = selectedByGroupId.get(option.optionGroupId) ?? [];
+    list.push(option);
+    selectedByGroupId.set(option.optionGroupId, list);
+  }
+
+  validateGroupSelections(groups, selectedByGroupId);
+
+  const selectedOptions = buildSelectedOptionsQuote(selected, groupMap);
+  const durationMinutes = calculateFinalDuration(
+    service.durationMinutes,
+    selected,
+  );
+  const priceMinor = calculateFinalPrice(
+    service.basePriceMinor,
+    selected,
+    service.currency,
+  );
+
+  return {
+    priceMinor,
+    currency: service.currency,
+    priceMode: service.pricingMode as PricingMode,
+    durationMinutes,
+    selectedOptions,
+  };
+}
