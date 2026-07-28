@@ -39,6 +39,9 @@ const serviceContext: BookingServiceContext = {
   rescheduleCutoffHours: 12,
   maxReschedules: 2,
   publicBookingEnabled: true,
+  pricingMode: 'fixed',
+  basePriceMinor: null,
+  currency: 'HUF',
 };
 
 const currentSlotStart = '2025-09-01T10:00:00.000Z';

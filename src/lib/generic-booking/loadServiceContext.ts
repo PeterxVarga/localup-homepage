@@ -39,6 +39,9 @@ interface ServiceRow {
   max_reschedules: number;
   public_booking_enabled: boolean;
   is_active: boolean;
+  pricing_mode: string;
+  base_price_minor: number | null;
+  currency: string;
 }
 
 interface ScheduleRow {
@@ -64,6 +67,9 @@ const SERVICE_FIELDS = [
   'max_reschedules',
   'public_booking_enabled',
   'is_active',
+  'pricing_mode',
+  'base_price_minor',
+  'currency',
 ].join(',');
 
 function mapServiceRow(
@@ -85,6 +91,9 @@ function mapServiceRow(
     rescheduleCutoffHours: row.reschedule_cutoff_hours,
     maxReschedules: row.max_reschedules,
     publicBookingEnabled: row.public_booking_enabled,
+    pricingMode: row.pricing_mode as 'fixed' | 'estimated',
+    basePriceMinor: row.base_price_minor,
+    currency: row.currency,
   };
 }
 
