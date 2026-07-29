@@ -161,7 +161,8 @@ export const POST: APIRoute = async ({ params, request }) => {
 
   const effectiveService = {
     ...service,
-    durationMinutes: quote.durationMinutes,
+    durationMinutes: quote.durationMaxMinutes,
+    maxDurationMinutes: null,
   };
 
   // Full availability revalidation using the same generator as the slot list,

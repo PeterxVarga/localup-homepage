@@ -110,9 +110,11 @@ export function generateCandidateSlots(
         service.timezone,
       );
 
+      const slotDurationMinutes = service.maxDurationMinutes ?? service.durationMinutes;
+
       for (
         let startMs = intervalStart.getTime();
-        startMs + service.durationMinutes * MINUTE_MS <= intervalEnd.getTime();
+        startMs + slotDurationMinutes * MINUTE_MS <= intervalEnd.getTime();
         startMs += service.slotIntervalMinutes * MINUTE_MS
       ) {
         const start = new Date(startMs);
@@ -121,7 +123,7 @@ export function generateCandidateSlots(
         slots.push({
           start: start.toISOString(),
           end: new Date(
-            startMs + service.durationMinutes * MINUTE_MS,
+            startMs + slotDurationMinutes * MINUTE_MS,
           ).toISOString(),
         });
       }

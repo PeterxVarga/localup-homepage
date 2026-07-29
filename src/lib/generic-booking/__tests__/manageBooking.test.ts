@@ -27,6 +27,7 @@ const serviceContext: BookingServiceContext = {
   serviceName: 'Cosmetic Treatment',
   scheduleId: '33333333-3333-3333-3333-333333333333',
   durationMinutes: 75,
+  maxDurationMinutes: null,
   slotIntervalMinutes: 30,
   minimumNoticeMinutes: 0,
   bookingWindowDays: 14,
@@ -38,6 +39,7 @@ const serviceContext: BookingServiceContext = {
   publicBookingEnabled: true,
   pricingMode: 'fixed',
   basePriceMinor: null,
+  basePriceMaxMinor: null,
   currency: 'HUF',
 };
 
@@ -59,6 +61,7 @@ function makeBookingRow(overrides: Record<string, unknown> = {}) {
       management_token_encrypted: 'enc-123',
       management_token_expires_at: '2025-12-01T00:00:00.000Z',
       reschedule_count: 0,
+      pricing_snapshot: null,
       ...overrides,
     },
   };
@@ -102,6 +105,12 @@ describe('getManageBookingDetails', () => {
     assert.equal(d.isCancelled, false);
     assert.equal(d.rescheduleCount, 0);
     assert.equal(d.maxReschedules, serviceContext.maxReschedules);
+    assert.equal(d.priceMinMinor, null);
+    assert.equal(d.priceMaxMinor, null);
+    assert.equal(d.currency, null);
+    assert.equal(d.priceMode, null);
+    assert.equal(d.durationMinMinutes, null);
+    assert.equal(d.durationMaxMinutes, null);
     // Internal UUIDs and isExpired are not exposed.
     assert.equal(
       'siteId' in d || 'serviceId' in d || 'isExpired' in d,
@@ -208,5 +217,58 @@ describe('getManageBookingDetails', () => {
     assert.equal(result.details.isCancelled, true);
     assert.equal(result.details.cancelCutoffPassed, true);
     assert.equal(result.details.rescheduleCutoffPassed, true);
+  });
+
+  it('returns pricing range from a v2 snapshot', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBookingRow({
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+      pricing_snapshot: {
+        version: 2,
+        priceMinMinor: 14900,
+        priceMaxMinor: 20900,
+        currency: 'HUF',
+        priceMode: 'estimated',
+        durationMinMinutes: 105,
+        durationMaxMinutes: 150,
+      },
+    });
+    const result = await getManageBookingDetails(rawToken, baseDeps(booking));
+
+    assert.equal(result.status, 'found');
+    if (result.status !== 'found') return;
+
+    assert.equal(result.details.priceMinMinor, 14900);
+    assert.equal(result.details.priceMaxMinor, 20900);
+    assert.equal(result.details.currency, 'HUF');
+    assert.equal(result.details.priceMode, 'estimated');
+    assert.equal(result.details.durationMinMinutes, 105);
+    assert.equal(result.details.durationMaxMinutes, 150);
+  });
+
+  it('returns scalar legacy snapshot as min === max', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBookingRow({
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+      pricing_snapshot: {
+        priceMinor: 15000,
+        durationMinutes: 90,
+        currency: 'HUF',
+        priceMode: 'fixed',
+      },
+    });
+    const result = await getManageBookingDetails(rawToken, baseDeps(booking));
+
+    assert.equal(result.status, 'found');
+    if (result.status !== 'found') return;
+
+    assert.equal(result.details.priceMinMinor, 15000);
+    assert.equal(result.details.priceMaxMinor, 15000);
+    assert.equal(result.details.durationMinMinutes, 90);
+    assert.equal(result.details.durationMaxMinutes, 90);
+    assert.equal(result.details.currency, 'HUF');
+    assert.equal(result.details.priceMode, 'fixed');
   });
 });

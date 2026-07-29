@@ -29,6 +29,7 @@ interface ServiceRow {
   slug: string;
   name: string;
   duration_minutes: number;
+  max_duration_minutes: number | null;
   slot_interval_minutes: number;
   minimum_notice_minutes: number;
   booking_window_days: number;
@@ -41,6 +42,7 @@ interface ServiceRow {
   is_active: boolean;
   pricing_mode: string;
   base_price_minor: number | null;
+  base_price_max_minor: number | null;
   currency: string;
 }
 
@@ -57,6 +59,7 @@ const SERVICE_FIELDS = [
   'slug',
   'name',
   'duration_minutes',
+  'max_duration_minutes',
   'slot_interval_minutes',
   'minimum_notice_minutes',
   'booking_window_days',
@@ -69,6 +72,7 @@ const SERVICE_FIELDS = [
   'is_active',
   'pricing_mode',
   'base_price_minor',
+  'base_price_max_minor',
   'currency',
 ].join(',');
 
@@ -82,6 +86,7 @@ function mapServiceRow(
     siteId: row.site_id,
     scheduleId: row.schedule_id,
     durationMinutes: row.duration_minutes,
+    maxDurationMinutes: row.max_duration_minutes,
     slotIntervalMinutes: row.slot_interval_minutes,
     minimumNoticeMinutes: row.minimum_notice_minutes,
     bookingWindowDays: row.booking_window_days,
@@ -93,6 +98,7 @@ function mapServiceRow(
     publicBookingEnabled: row.public_booking_enabled,
     pricingMode: row.pricing_mode as 'fixed' | 'estimated',
     basePriceMinor: row.base_price_minor,
+    basePriceMaxMinor: row.base_price_max_minor,
     currency: row.currency,
   };
 }

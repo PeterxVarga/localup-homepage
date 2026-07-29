@@ -1,9 +1,13 @@
 // ============================================================
-// Booking pricing — pure quote calculator
+// Booking pricing — pure range quote calculator
 //
 // The calculator is a pure function: it reads no database, writes no
 // booking, calls no calendar/email, and trusts no client-supplied labels,
 // prices, durations, or modes. The caller may only pass option IDs.
+//
+// Every quote returns a min/max price and duration range. For fixed
+// pricing the contract requires priceMin === priceMax. Duration may still
+// be a range because a fixed price does not imply a fixed duration.
 // ============================================================
 
 import type {
@@ -45,6 +49,57 @@ function assertServiceContract(service: BookingQuoteInput['service']): void {
       `Invalid service base duration: ${service.durationMinutes}`,
       'invalid_base_duration',
     );
+  }
+
+  if (service.maxDurationMinutes !== null) {
+    if (
+      !Number.isInteger(service.maxDurationMinutes) ||
+      service.maxDurationMinutes < MIN_DURATION_MINUTES ||
+      service.maxDurationMinutes > MAX_DURATION_MINUTES ||
+      service.maxDurationMinutes % DURATION_STEP_MINUTES !== 0 ||
+      service.maxDurationMinutes < service.durationMinutes
+    ) {
+      throw new BookingPricingError(
+        `Invalid service max duration: ${service.maxDurationMinutes}`,
+        'invalid_base_duration',
+      );
+    }
+  }
+
+  if (
+    service.basePriceMinor !== null &&
+    (!Number.isSafeInteger(service.basePriceMinor) || service.basePriceMinor < 0)
+  ) {
+    throw new BookingPricingError(
+      `Invalid service base price: ${service.basePriceMinor}`,
+      'invalid_base_price',
+    );
+  }
+
+  if (
+    service.basePriceMaxMinor !== null &&
+    (!Number.isSafeInteger(service.basePriceMaxMinor) ||
+      service.basePriceMaxMinor < 0 ||
+      (service.basePriceMinor !== null &&
+        service.basePriceMaxMinor < service.basePriceMinor))
+  ) {
+    throw new BookingPricingError(
+      `Invalid service base max price: ${service.basePriceMaxMinor}`,
+      'invalid_base_price',
+    );
+  }
+
+  if (service.pricingMode === 'fixed') {
+    if (
+      service.basePriceMaxMinor !== null &&
+      service.basePriceMinor !== null &&
+      service.basePriceMaxMinor !== service.basePriceMinor
+    ) {
+      throw new BookingPricingError(
+        'Fixed pricing requires basePriceMinor === basePriceMaxMinor',
+        'invalid_fixed_price_range',
+      );
+    }
   }
 }
 
@@ -191,6 +246,27 @@ function validateGroupSelections(
   }
 }
 
+function validateOptionRangeContract(
+  selected: BookingServiceOption[],
+  pricingMode: PricingMode,
+): void {
+  if (pricingMode !== 'fixed') {
+    return;
+  }
+
+  for (const option of selected) {
+    if (
+      option.priceDeltaMaxMinor !== null &&
+      option.priceDeltaMaxMinor !== option.priceDeltaMinor
+    ) {
+      throw new BookingPricingError(
+        `Fixed pricing requires option ${option.id} priceDeltaMaxMinor === priceDeltaMinor`,
+        'invalid_fixed_price_range',
+      );
+    }
+  }
+}
+
 function buildSelectedOptionsQuote(
   selected: BookingServiceOption[],
   groupMap: Map<string, BookingServiceOptionGroup>,
@@ -227,51 +303,89 @@ function buildSelectedOptionsQuote(
     optionSlug: option.slug,
     label: option.label,
     priceDeltaMinor: option.priceDeltaMinor,
+    priceDeltaMaxMinor: option.priceDeltaMaxMinor,
     durationDeltaMinutes: option.durationDeltaMinutes,
+    durationDeltaMaxMinutes: option.durationDeltaMaxMinutes,
   }));
 }
 
-function calculateFinalDuration(
-  baseDuration: number,
-  selected: BookingServiceOption[],
-): number {
-  const duration = selected.reduce(
-    (sum, option) => sum + option.durationDeltaMinutes,
-    baseDuration,
-  );
-
+function validateDuration(value: number): void {
   if (
-    !Number.isInteger(duration) ||
-    duration < MIN_DURATION_MINUTES ||
-    duration > MAX_DURATION_MINUTES ||
-    duration % DURATION_STEP_MINUTES !== 0
+    !Number.isInteger(value) ||
+    value < MIN_DURATION_MINUTES ||
+    value > MAX_DURATION_MINUTES ||
+    value % DURATION_STEP_MINUTES !== 0
   ) {
     throw new BookingPricingError(
-      `Calculated duration ${duration} is outside the allowed range or not a multiple of ${DURATION_STEP_MINUTES}`,
+      `Calculated duration ${value} is outside the allowed range or not a multiple of ${DURATION_STEP_MINUTES}`,
+      'invalid_calculated_duration',
+    );
+  }
+}
+
+function calculateFinalDurationRange(
+  baseDurationMinutes: number,
+  baseMaxDurationMinutes: number | null,
+  selected: BookingServiceOption[],
+): { durationMinMinutes: number; durationMaxMinutes: number } {
+  const durationMinMinutes = selected.reduce(
+    (sum, option) => sum + option.durationDeltaMinutes,
+    baseDurationMinutes,
+  );
+
+  const durationMaxMinutes = selected.reduce(
+    (sum, option) => sum + (option.durationDeltaMaxMinutes ?? option.durationDeltaMinutes),
+    baseMaxDurationMinutes ?? baseDurationMinutes,
+  );
+
+  validateDuration(durationMinMinutes);
+  validateDuration(durationMaxMinutes);
+
+  if (durationMaxMinutes < durationMinMinutes) {
+    throw new BookingPricingError(
+      `Calculated max duration ${durationMaxMinutes} is less than min duration ${durationMinMinutes}`,
       'invalid_calculated_duration',
     );
   }
 
-  return duration;
+  return { durationMinMinutes, durationMaxMinutes };
 }
 
-function calculateFinalPrice(
-  basePriceMinor: number | null,
-  selected: BookingServiceOption[],
-  currency: string,
-): number | null {
-  if (basePriceMinor === null) {
-    return null;
-  }
-
-  if (!Number.isSafeInteger(basePriceMinor) || basePriceMinor < 0) {
+function validatePriceValue(value: number, currency: string): number {
+  if (!Number.isSafeInteger(value)) {
     throw new BookingPricingError(
-      `Invalid base price: ${basePriceMinor}`,
-      'invalid_base_price',
+      'Calculated price exceeds safe integer range',
+      'price_overflow',
     );
   }
 
-  const totalDelta = selected.reduce((sum, option) => {
+  if (value < 0) {
+    throw new BookingPricingError(
+      `Calculated price ${value} ${currency} is negative`,
+      'negative_price',
+    );
+  }
+
+  return value;
+}
+
+function calculateFinalPriceRange(
+  basePriceMinor: number | null,
+  basePriceMaxMinor: number | null,
+  selected: BookingServiceOption[],
+  currency: string,
+): { priceMinMinor: number | null; priceMaxMinor: number | null } {
+  if (basePriceMinor === null) {
+    if (basePriceMaxMinor !== null) {
+      throw new BookingPricingError(
+        'basePriceMaxMinor cannot be set when basePriceMinor is null',
+        'invalid_base_price',
+      );
+    }
+    return { priceMinMinor: null, priceMaxMinor: null };
+  }
+
+  const minDeltaSum = selected.reduce((sum, option) => {
     const next = sum + option.priceDeltaMinor;
     if (!Number.isSafeInteger(next)) {
       throw new BookingPricingError(
@@ -282,23 +396,37 @@ function calculateFinalPrice(
     return next;
   }, 0);
 
-  const price = basePriceMinor + totalDelta;
+  const maxDeltaSum = selected.reduce((sum, option) => {
+    const delta = option.priceDeltaMaxMinor ?? option.priceDeltaMinor;
+    const next = sum + delta;
+    if (!Number.isSafeInteger(next)) {
+      throw new BookingPricingError(
+        'Price delta sum exceeds safe integer range',
+        'price_overflow',
+      );
+    }
+    return next;
+  }, 0);
 
-  if (!Number.isSafeInteger(price)) {
-    throw new BookingPricingError(
-      'Calculated price exceeds safe integer range',
-      'price_overflow',
-    );
-  }
+  const effectiveBaseMax = basePriceMaxMinor ?? basePriceMinor;
 
-  if (price < 0) {
+  const priceMinMinor = validatePriceValue(
+    basePriceMinor + minDeltaSum,
+    currency,
+  );
+  const priceMaxMinor = validatePriceValue(
+    effectiveBaseMax + maxDeltaSum,
+    currency,
+  );
+
+  if (priceMaxMinor < priceMinMinor) {
     throw new BookingPricingError(
-      `Calculated price ${price} ${currency} is negative`,
+      `Calculated max price ${priceMaxMinor} is less than min price ${priceMinMinor}`,
       'negative_price',
     );
   }
 
-  return price;
+  return { priceMinMinor, priceMaxMinor };
 }
 
 /**
@@ -337,23 +465,35 @@ export function calculateBookingQuote(
   }
 
   validateGroupSelections(groups, selectedByGroupId);
+  validateOptionRangeContract(selected, service.pricingMode);
 
   const selectedOptions = buildSelectedOptionsQuote(selected, groupMap);
-  const durationMinutes = calculateFinalDuration(
+  const { durationMinMinutes, durationMaxMinutes } = calculateFinalDurationRange(
     service.durationMinutes,
+    service.maxDurationMinutes,
     selected,
   );
-  const priceMinor = calculateFinalPrice(
+  const { priceMinMinor, priceMaxMinor } = calculateFinalPriceRange(
     service.basePriceMinor,
+    service.basePriceMaxMinor,
     selected,
     service.currency,
   );
 
+  if (service.pricingMode === 'fixed' && priceMinMinor !== priceMaxMinor) {
+    throw new BookingPricingError(
+      'Fixed pricing requires calculated priceMin === priceMax',
+      'invalid_fixed_price_range',
+    );
+  }
+
   return {
-    priceMinor,
+    priceMinMinor,
+    priceMaxMinor,
     currency: service.currency,
     priceMode: service.pricingMode as PricingMode,
-    durationMinutes,
+    durationMinMinutes,
+    durationMaxMinutes,
     selectedOptions,
   };
 }

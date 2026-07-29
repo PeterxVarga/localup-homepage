@@ -109,7 +109,8 @@ export const GET: APIRoute = async ({ params, request }) => {
 
     const effectiveService = {
       ...service,
-      durationMinutes: quote.durationMinutes,
+      durationMinutes: quote.durationMaxMinutes,
+      maxDurationMinutes: null,
     };
 
     const provider = await resolveGenericAvailabilityProvider(

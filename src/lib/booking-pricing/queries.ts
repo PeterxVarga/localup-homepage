@@ -36,7 +36,9 @@ interface OptionRow {
   slug: string;
   label: string;
   price_delta_minor: number;
+  price_delta_max_minor: number | null;
   duration_delta_minutes: number;
+  duration_delta_max_minutes: number | null;
   sort_order: number;
   is_active: boolean;
 }
@@ -73,7 +75,9 @@ function mapOptionRow(row: OptionRow): BookingServiceOption {
     slug: row.slug,
     label: row.label,
     priceDeltaMinor: row.price_delta_minor,
+    priceDeltaMaxMinor: row.price_delta_max_minor,
     durationDeltaMinutes: row.duration_delta_minutes,
+    durationDeltaMaxMinutes: row.duration_delta_max_minutes,
     sortOrder: row.sort_order,
     isActive: row.is_active,
   };
@@ -104,7 +108,7 @@ export async function loadBookingServiceOptions(
     supabase
       .from('booking_service_options')
       .select(
-        'id, site_id, service_id, option_group_id, slug, label, price_delta_minor, duration_delta_minutes, sort_order, is_active',
+        'id, site_id, service_id, option_group_id, slug, label, price_delta_minor, price_delta_max_minor, duration_delta_minutes, duration_delta_max_minutes, sort_order, is_active',
       )
       .eq('site_id', siteId)
       .eq('service_id', serviceId)

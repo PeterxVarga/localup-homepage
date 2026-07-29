@@ -7,6 +7,7 @@ export type SelectionMode = 'single' | 'multiple';
 
 export interface BookingServiceConfig {
   durationMinutes: number;
+  maxDurationMinutes: number | null;
   slotIntervalMinutes: number;
   minimumNoticeMinutes: number;
   bookingWindowDays: number;
@@ -29,6 +30,7 @@ export interface BookingServiceContext extends BookingServiceConfig {
   publicBookingEnabled: boolean;
   pricingMode: PricingMode;
   basePriceMinor: number | null;
+  basePriceMaxMinor: number | null;
   currency: string;
 }
 

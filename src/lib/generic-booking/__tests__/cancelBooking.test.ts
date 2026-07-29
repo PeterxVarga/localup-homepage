@@ -27,6 +27,7 @@ const serviceContext: BookingServiceContext = {
   serviceName: 'Cosmetic Treatment',
   scheduleId: '33333333-3333-3333-3333-333333333333',
   durationMinutes: 75,
+  maxDurationMinutes: null,
   slotIntervalMinutes: 30,
   minimumNoticeMinutes: 0,
   bookingWindowDays: 14,
@@ -38,6 +39,7 @@ const serviceContext: BookingServiceContext = {
   publicBookingEnabled: true,
   pricingMode: 'fixed',
   basePriceMinor: null,
+  basePriceMaxMinor: null,
   currency: 'HUF',
 };
 
