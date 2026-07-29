@@ -10,12 +10,13 @@ import assert from 'node:assert/strict';
 import {
   createGenericBooking,
   type CreateBookingDeps,
-  type GenericBookingInput,
 } from '../createBooking';
+import type { GenericBookingInput } from '../types';
 import { validateBookingIntake } from '../../booking-intake/validateBookingIntake';
 import { resolveIntakeOptions } from '../../booking-pricing/intakeOptionResolver';
 import { calculateBookingQuote } from '../../booking-pricing/calculateBookingQuote';
 import { PublicQuoteServiceError } from '../../booking-pricing/publicQuoteService';
+import type { PublicQuoteResponse } from '../../booking-pricing/types';
 import type { BookingServiceContext } from '../../booking-service/types';
 import type { GenericCalendarProvider } from '../../calendar/genericAvailabilityResolver';
 import type { CreateEventResult } from '../../calendar/types';
@@ -529,8 +530,13 @@ describe('createGenericBooking', () => {
             isRequired: true,
             minLength: 2,
             maxLength: 50,
+            minValue: null,
+            maxValue: null,
+            minSelections: 0,
+            maxSelections: 0,
             sortOrder: 0,
             isActive: true,
+            options: [],
           },
         ],
         validateIntake: validateBookingIntake,
@@ -584,8 +590,13 @@ describe('createGenericBooking', () => {
             isRequired: true,
             minLength: 2,
             maxLength: 50,
+            minValue: null,
+            maxValue: null,
+            minSelections: 0,
+            maxSelections: 0,
             sortOrder: 0,
             isActive: true,
+            options: [],
           },
           {
             id: 'notes-id',
@@ -597,8 +608,13 @@ describe('createGenericBooking', () => {
             isRequired: false,
             minLength: 0,
             maxLength: 500,
+            minValue: null,
+            maxValue: null,
+            minSelections: 0,
+            maxSelections: 0,
             sortOrder: 1,
             isActive: true,
+            options: [],
           },
         ],
         validateIntake: validateBookingIntake,
@@ -646,8 +662,13 @@ describe('createGenericBooking', () => {
             isRequired: true,
             minLength: 2,
             maxLength: 50,
+            minValue: null,
+            maxValue: null,
+            minSelections: 0,
+            maxSelections: 0,
             sortOrder: 0,
             isActive: true,
+            options: [],
           },
         ],
         validateIntake: validateBookingIntake,
@@ -863,7 +884,7 @@ describe('createGenericBooking intake-driven option selection', () => {
     service: BookingServiceContext,
     optionIds: string[],
     intakeData: import('../../booking-intake/types').BookingIntakeData,
-  ) {
+  ): Promise<PublicQuoteResponse> {
     const resolution = resolveIntakeOptions(
       optionIds,
       intakeData,
@@ -879,13 +900,26 @@ describe('createGenericBooking intake-driven option selection', () => {
     }
 
     try {
-      return calculateBookingQuote({
+      const quote = calculateBookingQuote({
         service,
         groups,
         options,
         selectedOptionIds: resolution.optionIds,
         mode: 'complete',
       });
+      return {
+        ...quote,
+        selectedOptions: quote.selectedOptions.map((selected) => ({
+          id: selected.optionId,
+          groupSlug: selected.groupSlug,
+          optionSlug: selected.optionSlug,
+          label: selected.label,
+          priceDeltaMinor: selected.priceDeltaMinor,
+          priceDeltaMaxMinor: selected.priceDeltaMaxMinor,
+          durationDeltaMinutes: selected.durationDeltaMinutes,
+          durationDeltaMaxMinutes: selected.durationDeltaMaxMinutes,
+        })),
+      };
     } catch (err) {
       if (err instanceof PublicQuoteServiceError) {
         throw err;
@@ -968,7 +1002,7 @@ describe('createGenericBooking intake-driven option selection', () => {
     const result = await createGenericBooking(
       makeGroomingInput({
         optionIds: ['coat-maintained-opt', 'desired-light-opt'],
-        slotEnd: '2025-09-01T11:30:00.000Z',
+        slotEnd: '2025-09-01T12:00:00.000Z',
       }),
       ['coat-maintained-opt', 'desired-light-opt'],
       groomingService,
@@ -993,11 +1027,14 @@ describe('createGenericBooking intake-driven option selection', () => {
     assert.equal(result.success, true);
     assert.ok(insertParams);
     if (!insertParams) return;
-    assert.equal(insertParams.normalizedIntakeData['dog-weight-kg'], 5);
-    assert.equal(insertParams.normalizedIntakeData['dog-age-group'], 'adult');
+    const captured = insertParams as unknown as Parameters<
+      Required<CreateBookingDeps>['insertBooking']
+    >[0];
+    assert.equal(captured.normalizedIntakeData['dog-weight-kg'], 5);
+    assert.equal(captured.normalizedIntakeData['dog-age-group'], 'adult');
     assert.ok(
-      Array.isArray(insertParams.pricingSnapshot.selectedOptions) &&
-        insertParams.pricingSnapshot.selectedOptions.some(
+      Array.isArray(captured.pricingSnapshot.selectedOptions) &&
+        captured.pricingSnapshot.selectedOptions.some(
           (o: unknown) =>
             typeof o === 'object' &&
             o !== null &&

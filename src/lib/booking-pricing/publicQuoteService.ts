@@ -37,10 +37,18 @@ import type {
 } from '../booking-intake/types';
 
 export class PublicQuoteServiceError extends Error {
-  readonly code: 'service_unavailable' | 'invalid_request' | 'invalid_selection';
+  readonly code:
+    | 'service_unavailable'
+    | 'invalid_request'
+    | 'invalid_intake'
+    | 'invalid_selection';
 
   constructor(
-    code: 'service_unavailable' | 'invalid_request' | 'invalid_selection',
+    code:
+      | 'service_unavailable'
+      | 'invalid_request'
+      | 'invalid_intake'
+      | 'invalid_selection',
     message: string,
   ) {
     super(message);
@@ -366,11 +374,15 @@ function handleBookingPricingError(err: BookingPricingError): never {
 function looksLikeDeps(
   value: unknown,
 ): value is Partial<PublicQuoteServiceDeps> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const candidate = value as Record<string, unknown>;
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    !Array.isArray(value) &&
-    ('loadOptions' in value || 'loadServiceContext' in value || 'loadIntakeFields' in value)
+    typeof candidate.loadOptions === 'function' ||
+    typeof candidate.loadServiceContext === 'function' ||
+    typeof candidate.loadIntakeFields === 'function'
   );
 }
 

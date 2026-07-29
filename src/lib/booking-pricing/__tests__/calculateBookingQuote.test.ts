@@ -297,6 +297,41 @@ describe('calculateBookingQuote', () => {
     assert.equal(quote.selectedOptions.length, 2);
   });
 
+  it('enforces min selections for a group that is started in partial mode', () => {
+    const group = makeGroup({
+      id: 'g1',
+      slug: 'extras',
+      selectionMode: 'multiple',
+      isRequired: true,
+      minSelections: 2,
+      maxSelections: 3,
+    });
+    const o1 = makeOption({ id: 'o1', slug: 'nail', optionGroupId: 'g1' });
+    const o2 = makeOption({ id: 'o2', slug: 'ear', optionGroupId: 'g1' });
+
+    assert.throws(
+      () => calculateBookingQuote({
+        service: baseService,
+        groups: [group],
+        options: [o1, o2],
+        selectedOptionIds: ['o1'],
+        mode: 'partial',
+      }),
+      (err: unknown) =>
+        err instanceof BookingPricingError &&
+        err.code === 'min_selections_not_met',
+    );
+
+    const quote = calculateBookingQuote({
+      service: baseService,
+      groups: [group],
+      options: [o1, o2],
+      selectedOptionIds: [],
+      mode: 'partial',
+    });
+    assert.equal(quote.selectedOptions.length, 0);
+  });
+
   it('rejects duplicate option IDs', () => {
     const group = makeGroup({
       id: 'g1',

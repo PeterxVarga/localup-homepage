@@ -22,6 +22,35 @@ describe('quoteRequestSchema', () => {
     assert.equal(result.success, true);
   });
 
+  it('accepts typed intake values and preserves their types', () => {
+    const result = quoteRequestSchema.safeParse({
+      optionIds: [validOptionId1],
+      intakeData: {
+        'dog-name': 'Mázli',
+        'dog-weight-kg': 8.5,
+        'care-considerations': ['anxious', 'sensitive-skin'],
+      },
+    });
+
+    assert.equal(result.success, true);
+    if (!result.success) return;
+    assert.equal(result.data.intakeData['dog-weight-kg'], 8.5);
+    assert.deepEqual(
+      result.data.intakeData['care-considerations'],
+      ['anxious', 'sensitive-skin'],
+    );
+  });
+
+  it('rejects non-typed intake values', () => {
+    const result = quoteRequestSchema.safeParse({
+      optionIds: [validOptionId1],
+      intakeData: {
+        'dog-weight-kg': { value: 8.5 },
+      },
+    });
+    assert.equal(result.success, false);
+  });
+
   it('rejects non-array optionIds', () => {
     const result = quoteRequestSchema.safeParse({
       optionIds: validOptionId1,

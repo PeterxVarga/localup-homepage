@@ -164,7 +164,13 @@ BEGIN
   END IF;
   RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql
+SET search_path = '';
+
+REVOKE ALL ON FUNCTION public.check_intake_option_field_type()
+  FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.check_intake_option_field_type()
+  TO service_role;
 
 DROP TRIGGER IF EXISTS booking_service_intake_field_options_type_check
   ON public.booking_service_intake_field_options;

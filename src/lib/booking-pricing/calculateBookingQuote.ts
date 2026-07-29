@@ -238,7 +238,7 @@ function validateGroupSelections(
       }
     }
 
-    if (mode === 'complete' && count < group.minSelections) {
+    if (count < group.minSelections) {
       throw new BookingPricingError(
         `Group ${group.slug} requires at least ${group.minSelections} selection(s)`,
         'min_selections_not_met',

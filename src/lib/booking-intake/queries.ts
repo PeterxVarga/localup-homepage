@@ -128,7 +128,7 @@ export async function loadBookingServiceIntakeFields(
     .order('id', { ascending: true });
 
   if (fieldsError) {
-    console.error('Failed to load booking service intake fields:', fieldsError);
+    console.error('Failed to load booking service intake fields');
     throw new BookingIntakeError(
       'Failed to load booking service intake fields',
       'intake_fields_load_failed',
@@ -156,7 +156,7 @@ export async function loadBookingServiceIntakeFields(
     .order('id', { ascending: true });
 
   if (optionsError) {
-    console.error('Failed to load booking service intake field options:', optionsError);
+    console.error('Failed to load booking service intake field options');
     throw new BookingIntakeError(
       'Failed to load booking service intake field options',
       'intake_field_options_load_failed',
