@@ -10,9 +10,13 @@ import assert from 'node:assert/strict';
 import {
   createGenericBooking,
   type CreateBookingDeps,
-  type GenericBookingInput,
 } from '../createBooking';
+import type { GenericBookingInput } from '../types';
 import { validateBookingIntake } from '../../booking-intake/validateBookingIntake';
+import { resolveIntakeOptions } from '../../booking-pricing/intakeOptionResolver';
+import { calculateBookingQuote } from '../../booking-pricing/calculateBookingQuote';
+import { PublicQuoteServiceError } from '../../booking-pricing/publicQuoteService';
+import type { PublicQuoteResponse } from '../../booking-pricing/types';
 import type { BookingServiceContext } from '../../booking-service/types';
 import type { GenericCalendarProvider } from '../../calendar/genericAvailabilityResolver';
 import type { CreateEventResult } from '../../calendar/types';
@@ -105,10 +109,10 @@ function baseDeps(overrides: Partial<CreateBookingDeps> = {}): Required<CreateBo
     },
     validateIntake: (raw) => {
       if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-        const data: Record<string, string> = {};
+        const data: import('../../booking-intake/types').BookingIntakeData = {};
         for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
-          if (typeof value === 'string') {
-            data[key] = value.trim();
+          if (typeof value === 'string' || typeof value === 'number' || Array.isArray(value)) {
+            data[key] = value as string | number | string[];
           }
         }
         return { data };
@@ -526,8 +530,13 @@ describe('createGenericBooking', () => {
             isRequired: true,
             minLength: 2,
             maxLength: 50,
+            minValue: null,
+            maxValue: null,
+            minSelections: 0,
+            maxSelections: 0,
             sortOrder: 0,
             isActive: true,
+            options: [],
           },
         ],
         validateIntake: validateBookingIntake,
@@ -581,8 +590,13 @@ describe('createGenericBooking', () => {
             isRequired: true,
             minLength: 2,
             maxLength: 50,
+            minValue: null,
+            maxValue: null,
+            minSelections: 0,
+            maxSelections: 0,
             sortOrder: 0,
             isActive: true,
+            options: [],
           },
           {
             id: 'notes-id',
@@ -594,8 +608,13 @@ describe('createGenericBooking', () => {
             isRequired: false,
             minLength: 0,
             maxLength: 500,
+            minValue: null,
+            maxValue: null,
+            minSelections: 0,
+            maxSelections: 0,
             sortOrder: 1,
             isActive: true,
+            options: [],
           },
         ],
         validateIntake: validateBookingIntake,
@@ -643,8 +662,13 @@ describe('createGenericBooking', () => {
             isRequired: true,
             minLength: 2,
             maxLength: 50,
+            minValue: null,
+            maxValue: null,
+            minSelections: 0,
+            maxSelections: 0,
             sortOrder: 0,
             isActive: true,
+            options: [],
           },
         ],
         validateIntake: validateBookingIntake,
@@ -666,5 +690,356 @@ describe('createGenericBooking', () => {
     if (result.success) return;
     assert.equal(result.error, 'invalid_intake');
     assert.equal(insertCalled, false);
+  });
+});
+
+describe('createGenericBooking intake-driven option selection', () => {
+  const groomingService: BookingServiceContext = {
+    siteId: '11111111-1111-1111-1111-111111111111',
+    siteSlug: 'demo',
+    siteName: 'Demo Grooming',
+    timezone: 'Europe/Budapest',
+    serviceId: 'g1111111-1111-1111-1111-111111111111',
+    serviceSlug: 'full-grooming',
+    serviceName: 'Full Grooming',
+    scheduleId: '33333333-3333-3333-3333-333333333333',
+    durationMinutes: 90,
+    maxDurationMinutes: 120,
+    slotIntervalMinutes: 15,
+    minimumNoticeMinutes: 0,
+    bookingWindowDays: 14,
+    bufferBeforeMinutes: 0,
+    bufferAfterMinutes: 0,
+    cancelCutoffHours: 12,
+    rescheduleCutoffHours: 12,
+    maxReschedules: 2,
+    publicBookingEnabled: true,
+    pricingMode: 'estimated',
+    basePriceMinor: 14900,
+    basePriceMaxMinor: 17900,
+    currency: 'HUF',
+  };
+
+  const sizeGroup = {
+    id: 'size-group',
+    siteId: groomingService.siteId,
+    serviceId: groomingService.serviceId,
+    slug: 'dog-size',
+    label: 'Méret',
+    selectionMode: 'single' as const,
+    isRequired: true,
+    minSelections: 1,
+    maxSelections: 1,
+    sortOrder: 0,
+    isActive: true,
+  };
+
+  const coatGroup = {
+    id: 'coat-group',
+    siteId: groomingService.siteId,
+    serviceId: groomingService.serviceId,
+    slug: 'coat-condition',
+    label: 'Szőrzet állapota',
+    selectionMode: 'single' as const,
+    isRequired: true,
+    minSelections: 1,
+    maxSelections: 1,
+    sortOrder: 1,
+    isActive: true,
+  };
+
+  const desiredGroup = {
+    id: 'desired-group',
+    siteId: groomingService.siteId,
+    serviceId: groomingService.serviceId,
+    slug: 'desired-result',
+    label: 'Kívánt eredmény',
+    selectionMode: 'single' as const,
+    isRequired: true,
+    minSelections: 1,
+    maxSelections: 1,
+    sortOrder: 2,
+    isActive: true,
+  };
+
+  const groups = [sizeGroup, coatGroup, desiredGroup];
+
+  const options = [
+    {
+      id: 'small-opt',
+      siteId: groomingService.siteId,
+      serviceId: groomingService.serviceId,
+      optionGroupId: sizeGroup.id,
+      slug: 'small',
+      label: 'Kistestű',
+      priceDeltaMinor: 0,
+      priceDeltaMaxMinor: 0,
+      durationDeltaMinutes: 0,
+      durationDeltaMaxMinutes: 0,
+      sortOrder: 0,
+      isActive: true,
+    },
+    {
+      id: 'coat-maintained-opt',
+      siteId: groomingService.siteId,
+      serviceId: groomingService.serviceId,
+      optionGroupId: coatGroup.id,
+      slug: 'maintained',
+      label: 'Rendszeresen ápolt',
+      priceDeltaMinor: 0,
+      priceDeltaMaxMinor: 0,
+      durationDeltaMinutes: 0,
+      durationDeltaMaxMinutes: 0,
+      sortOrder: 0,
+      isActive: true,
+    },
+    {
+      id: 'desired-light-opt',
+      siteId: groomingService.siteId,
+      serviceId: groomingService.serviceId,
+      optionGroupId: desiredGroup.id,
+      slug: 'light-trim',
+      label: 'Csak igazítás',
+      priceDeltaMinor: 0,
+      priceDeltaMaxMinor: 0,
+      durationDeltaMinutes: 0,
+      durationDeltaMaxMinutes: 0,
+      sortOrder: 0,
+      isActive: true,
+    },
+  ];
+
+  const weightField = {
+    id: 'weight-field',
+    siteId: groomingService.siteId,
+    serviceId: groomingService.serviceId,
+    slug: 'dog-weight-kg',
+    label: 'Testsúly',
+    fieldType: 'number' as const,
+    isRequired: false,
+    minLength: 0,
+    maxLength: 1,
+    minValue: 1,
+    maxValue: 100,
+    minSelections: 0,
+    maxSelections: 0,
+    sortOrder: 0,
+    isActive: true,
+    options: [],
+  };
+
+  const ageField = {
+    id: 'age-field',
+    siteId: groomingService.siteId,
+    serviceId: groomingService.serviceId,
+    slug: 'dog-age-group',
+    label: 'Életkor',
+    fieldType: 'single_choice' as const,
+    isRequired: true,
+    minLength: 1,
+    maxLength: 1,
+    minValue: null,
+    maxValue: null,
+    minSelections: 1,
+    maxSelections: 1,
+    sortOrder: 1,
+    isActive: true,
+    options: [
+      {
+        id: 'adult-opt',
+        siteId: groomingService.siteId,
+        serviceId: groomingService.serviceId,
+        intakeFieldId: 'age-field',
+        slug: 'adult',
+        label: 'Felnőtt',
+        sortOrder: 0,
+        isActive: true,
+      },
+    ],
+  };
+
+  const fields = [weightField, ageField];
+
+  function makeGroomingInput(
+    overrides: Partial<GenericBookingInput> = {},
+  ): GenericBookingInput {
+    return {
+      name: 'Teszt Elek',
+      email: 'teszt@example.com',
+      phone: '+36 30 123 4567',
+      notes: '',
+      slotStart,
+      slotEnd,
+      optionIds: [],
+      intakeData: {
+        'dog-weight-kg': 5,
+        'dog-age-group': 'adult',
+      },
+      locale: 'hu',
+      ...overrides,
+    };
+  }
+
+  async function calculateQuote(
+    service: BookingServiceContext,
+    optionIds: string[],
+    intakeData: import('../../booking-intake/types').BookingIntakeData,
+  ): Promise<PublicQuoteResponse> {
+    const resolution = resolveIntakeOptions(
+      optionIds,
+      intakeData,
+      fields,
+      groups,
+      options,
+    );
+    if ('error' in resolution) {
+      throw new PublicQuoteServiceError(
+        resolution.error,
+        'Invalid intake/option selection',
+      );
+    }
+
+    try {
+      const quote = calculateBookingQuote({
+        service,
+        groups,
+        options,
+        selectedOptionIds: resolution.optionIds,
+        mode: 'complete',
+      });
+      return {
+        ...quote,
+        selectedOptions: quote.selectedOptions.map((selected) => ({
+          id: selected.optionId,
+          groupSlug: selected.groupSlug,
+          optionSlug: selected.optionSlug,
+          label: selected.label,
+          priceDeltaMinor: selected.priceDeltaMinor,
+          priceDeltaMaxMinor: selected.priceDeltaMaxMinor,
+          durationDeltaMinutes: selected.durationDeltaMinutes,
+          durationDeltaMaxMinutes: selected.durationDeltaMaxMinutes,
+        })),
+      };
+    } catch (err) {
+      if (err instanceof PublicQuoteServiceError) {
+        throw err;
+      }
+      throw new PublicQuoteServiceError(
+        'invalid_selection',
+        err instanceof Error ? err.message : 'Invalid option selection',
+      );
+    }
+  }
+
+  it('rejects final booking when coat-condition is missing', async () => {
+    let insertCalled = false;
+    const result = await createGenericBooking(
+      makeGroomingInput({
+        slotEnd: '2025-09-01T11:30:00.000Z',
+      }),
+      [],
+      groomingService,
+      baseDeps({
+        loadIntakeFields: async () => fields,
+        validateIntake: validateBookingIntake,
+        calculateQuote,
+        insertBooking: async () => {
+          insertCalled = true;
+          return {
+            ok: true,
+            booking: {
+              id: 'should-not-happen',
+              slot_start: slotStart,
+              slot_end: slotEnd,
+            },
+          };
+        },
+      }),
+    );
+
+    assert.equal(result.success, false);
+    if (result.success) return;
+    assert.equal(result.error, 'invalid_selection');
+    assert.equal(insertCalled, false);
+  });
+
+  it('rejects final booking when desired-result is missing', async () => {
+    let insertCalled = false;
+    const result = await createGenericBooking(
+      makeGroomingInput({
+        optionIds: ['coat-maintained-opt'],
+        slotEnd: '2025-09-01T11:30:00.000Z',
+      }),
+      ['coat-maintained-opt'],
+      groomingService,
+      baseDeps({
+        loadIntakeFields: async () => fields,
+        validateIntake: validateBookingIntake,
+        calculateQuote,
+        insertBooking: async () => {
+          insertCalled = true;
+          return {
+            ok: true,
+            booking: {
+              id: 'should-not-happen',
+              slot_start: slotStart,
+              slot_end: slotEnd,
+            },
+          };
+        },
+      }),
+    );
+
+    assert.equal(result.success, false);
+    if (result.success) return;
+    assert.equal(result.error, 'invalid_selection');
+    assert.equal(insertCalled, false);
+  });
+
+  it('creates booking with complete selection and stores weight-derived size in snapshot', async () => {
+    let insertParams: Parameters<Required<CreateBookingDeps>['insertBooking']>[0] | null = null;
+
+    const result = await createGenericBooking(
+      makeGroomingInput({
+        optionIds: ['coat-maintained-opt', 'desired-light-opt'],
+        slotEnd: '2025-09-01T12:00:00.000Z',
+      }),
+      ['coat-maintained-opt', 'desired-light-opt'],
+      groomingService,
+      baseDeps({
+        loadIntakeFields: async () => fields,
+        validateIntake: validateBookingIntake,
+        calculateQuote,
+        insertBooking: async (params) => {
+          insertParams = params;
+          return {
+            ok: true,
+            booking: {
+              id: 'test-booking-id',
+              slot_start: params.input.slotStart,
+              slot_end: params.input.slotEnd,
+            },
+          };
+        },
+      }),
+    );
+
+    assert.equal(result.success, true);
+    assert.ok(insertParams);
+    if (!insertParams) return;
+    const captured = insertParams as unknown as Parameters<
+      Required<CreateBookingDeps>['insertBooking']
+    >[0];
+    assert.equal(captured.normalizedIntakeData['dog-weight-kg'], 5);
+    assert.equal(captured.normalizedIntakeData['dog-age-group'], 'adult');
+    assert.ok(
+      Array.isArray(captured.pricingSnapshot.selectedOptions) &&
+        captured.pricingSnapshot.selectedOptions.some(
+          (o: unknown) =>
+            typeof o === 'object' &&
+            o !== null &&
+            (o as { optionSlug?: string }).optionSlug === 'small',
+        ),
+    );
   });
 });

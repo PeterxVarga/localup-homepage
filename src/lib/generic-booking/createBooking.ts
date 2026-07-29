@@ -45,6 +45,7 @@ import type {
   GenericBookingOutcome,
   GenericBookingErrorCode,
 } from './types';
+import type { BookingIntakeData } from '../booking-intake/types';
 
 const TOKEN_TTL_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -117,8 +118,8 @@ export interface CreateBookingDeps {
     raw: unknown,
     fields: import('../booking-intake/types').BookingServiceIntakeField[],
   ) =>
-    | { data: Record<string, string> }
-    | { code: 'invalid_intake' };
+    | import('../booking-intake/types').ValidatedIntake
+    | import('../booking-intake/types').InvalidIntake;
   insertBooking?: (params: {
     siteId: string;
     serviceId: string;
@@ -133,7 +134,7 @@ export interface CreateBookingDeps {
     priceMode: string | null;
     currency: string | null;
     pricingSnapshot: Record<string, unknown>;
-    normalizedIntakeData: Record<string, string>;
+    normalizedIntakeData: BookingIntakeData;
   }) => Promise<
     | { ok: true; booking: { id: string; slot_start: string; slot_end: string } }
     | { ok: false; errorCode: string }
@@ -141,6 +142,7 @@ export interface CreateBookingDeps {
   calculateQuote?: (
     service: BookingServiceContext,
     optionIds: string[],
+    intakeData: BookingIntakeData,
   ) => Promise<PublicQuoteResponse>;
   createCalendarEvent?: (
     provider: GenericCalendarProvider,
@@ -316,34 +318,9 @@ export async function createGenericBooking(
     sendConfirmationEmails,
   } = { ...defaultDeps, ...deps };
 
-  // 0. Calculate the server-side quote from option IDs. The client never
-  //    sends price, duration, currency, or mode.
-  let quote: PublicQuoteResponse;
-  try {
-    quote = await calculateQuote(service, optionIds);
-  } catch (err) {
-    if (err instanceof PublicQuoteServiceError) {
-      const errorCode: GenericBookingErrorCode =
-        err.code === 'service_unavailable' ? 'service_unavailable' : 'invalid_slot';
-      return {
-        success: false,
-        error: errorCode,
-        message: err.message,
-      };
-    }
-
-    console.error('Generic create: failed to calculate quote');
-    return {
-      success: false,
-      error: 'service_unavailable',
-      message:
-        'A foglalás jelenleg nem kezelhető online. Kérlek próbáld újra később.',
-    };
-  }
-
-  // 1. Validate intake data against the server-owned service contract.
+  // 0. Validate intake data against the server-owned service contract.
   //    The client may only submit values for configured, active field slugs.
-  let normalizedIntakeData: Record<string, string>;
+  let normalizedIntakeData: BookingIntakeData;
   try {
     const intakeFields = await loadIntakeFields(service.siteId, service.serviceId);
     const intakeResult = validateIntake(input.intakeData, intakeFields);
@@ -357,6 +334,37 @@ export async function createGenericBooking(
     normalizedIntakeData = intakeResult.data;
   } catch (err) {
     console.error('Generic create: failed to validate intake data');
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message:
+        'A foglalás jelenleg nem kezelhető online. Kérlek próbáld újra később.',
+    };
+  }
+
+  // 1. Calculate the server-side quote from option IDs and normalized intake.
+  //    The client never sends price, duration, currency, or mode.
+  let quote: PublicQuoteResponse;
+  try {
+    quote = await calculateQuote(service, optionIds, normalizedIntakeData);
+  } catch (err) {
+    if (err instanceof PublicQuoteServiceError) {
+      const errorCode: GenericBookingErrorCode =
+        err.code === 'service_unavailable'
+          ? 'service_unavailable'
+          : err.code === 'invalid_selection'
+            ? 'invalid_selection'
+            : err.code === 'invalid_intake'
+              ? 'invalid_intake'
+              : 'invalid_slot';
+      return {
+        success: false,
+        error: errorCode,
+        message: err.message,
+      };
+    }
+
+    console.error('Generic create: failed to calculate quote');
     return {
       success: false,
       error: 'service_unavailable',

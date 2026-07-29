@@ -66,6 +66,7 @@ export interface BookingQuoteInput {
   groups: BookingServiceOptionGroup[];
   options: BookingServiceOption[];
   selectedOptionIds: string[];
+  mode?: 'partial' | 'complete';
 }
 
 export class BookingPricingError extends Error {

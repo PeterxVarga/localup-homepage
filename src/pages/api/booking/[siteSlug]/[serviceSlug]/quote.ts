@@ -77,6 +77,9 @@ export const POST: APIRoute = async ({ params, request }) => {
       siteSlug,
       serviceSlug,
       parsed.data.optionIds,
+      parsed.data.intakeData,
+      {},
+      'partial',
     );
     return jsonResponse(quote, 200, {
       'Cache-Control': 'no-cache',
