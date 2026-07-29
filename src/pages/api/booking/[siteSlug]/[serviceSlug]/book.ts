@@ -134,7 +134,11 @@ export const POST: APIRoute = async ({ params, request }) => {
   // currency, or mode — only option IDs.
   let quote;
   try {
-    quote = await calculateQuoteForService(service, input.optionIds);
+    quote = await calculateQuoteForService(
+      service,
+      input.optionIds,
+      input.intakeData,
+    );
   } catch (err) {
     if (err instanceof PublicQuoteServiceError) {
       const status = err.code === 'service_unavailable' ? 503 : 400;
