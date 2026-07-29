@@ -114,6 +114,7 @@ export interface PublicOptionGroupConfig {
 export interface PublicPricingConfig {
   service: PublicServiceConfig;
   optionGroups: PublicOptionGroupConfig[];
+  intakeFields: import('../booking-intake/types').PublicIntakeField[];
 }
 
 export interface PublicSelectedOption {

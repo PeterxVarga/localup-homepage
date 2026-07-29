@@ -88,10 +88,12 @@ function makeDeps(
   service: BookingServiceContext,
   groups: BookingServiceOptionGroup[],
   options: BookingServiceOption[],
+  intakeFields: import('../../booking-intake/types').BookingServiceIntakeField[] = [],
 ) {
   return {
     loadServiceContext: async () => service,
     loadOptions: async () => ({ groups, options }),
+    loadIntakeFields: async () => intakeFields,
   };
 }
 

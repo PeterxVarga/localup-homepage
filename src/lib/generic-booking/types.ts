@@ -12,6 +12,7 @@ export interface GenericBookingInput {
   slotEnd: string;
   optionIds: string[];
   locale?: string;
+  intakeData?: Record<string, string>;
 }
 
 export interface GenericBookingResult {
@@ -24,6 +25,7 @@ export interface GenericBookingResult {
 export type GenericBookingErrorCode =
   | 'slot_taken'
   | 'invalid_slot'
+  | 'invalid_intake'
   | 'service_unavailable'
   | 'db_error';
 
