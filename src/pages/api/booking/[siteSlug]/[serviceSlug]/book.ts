@@ -216,6 +216,7 @@ export const POST: APIRoute = async ({ params, request }) => {
       number
     > = {
       invalid_slot: 400,
+      invalid_intake: 400,
       slot_taken: 409,
       db_error: 500,
       service_unavailable: 503,

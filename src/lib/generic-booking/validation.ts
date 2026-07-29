@@ -44,6 +44,11 @@ export const genericBookingRequestSchema = z
     optionIds: z
       .array(z.uuid({ message: 'Each optionId must be a valid UUID' }))
       .max(20, 'optionIds must contain at most 20 items'),
+    intakeData: z
+      .record(z.string(), z.string(), {
+        message: 'intakeData must be an object with string values',
+      })
+      .default({}),
     locale: z.enum(SUPPORTED_LOCALES).optional(),
     honeypot: z.string().max(200).optional(),
   })

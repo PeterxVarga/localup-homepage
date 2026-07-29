@@ -15,6 +15,7 @@ import { BookingServiceError } from '../booking-service/types';
 import type { BookingServiceContext } from '../booking-service/types';
 import { calculateBookingQuote } from './calculateBookingQuote';
 import { loadBookingServiceOptions } from './queries';
+import { loadBookingServiceIntakeFields } from '../booking-intake/queries';
 import { BookingPricingError } from './types';
 import type {
   BookingServiceOption,
@@ -27,6 +28,7 @@ import type {
   PublicSelectedOption,
   SelectedOptionQuote,
 } from './types';
+import type { PublicIntakeField } from '../booking-intake/types';
 
 export class PublicQuoteServiceError extends Error {
   readonly code: 'service_unavailable' | 'invalid_request' | 'invalid_selection';
@@ -47,11 +49,15 @@ export interface PublicQuoteServiceDeps {
     groups: BookingServiceOptionGroup[];
     options: BookingServiceOption[];
   }>;
+  loadIntakeFields: (siteId: string, serviceId: string) => Promise<
+    import('../booking-intake/types').BookingServiceIntakeField[]
+  >;
 }
 
 const defaultDeps: PublicQuoteServiceDeps = {
   loadServiceContext: getBookingServiceContext,
   loadOptions: loadBookingServiceOptions,
+  loadIntakeFields: loadBookingServiceIntakeFields,
 };
 
 const UUID_REGEX =
@@ -222,10 +228,24 @@ function mapPublicOptionGroup(
   };
 }
 
+function mapPublicIntakeField(
+  field: import('../booking-intake/types').BookingServiceIntakeField,
+): PublicIntakeField {
+  return {
+    slug: field.slug,
+    label: field.label,
+    fieldType: field.fieldType,
+    isRequired: field.isRequired,
+    minLength: field.minLength,
+    maxLength: field.maxLength,
+  };
+}
+
 function buildPublicPricingConfig(
   service: BookingServiceContext,
   groups: BookingServiceOptionGroup[],
   options: BookingServiceOption[],
+  intakeFields: import('../booking-intake/types').BookingServiceIntakeField[],
 ): PublicPricingConfig {
   const activeGroups = groups
     .filter((group) => group.isActive)
@@ -237,6 +257,16 @@ function buildPublicPricingConfig(
     })
     .map((group) => mapPublicOptionGroup(group, options))
     .filter((group): group is PublicOptionGroupConfig => group !== null);
+
+  const activeIntakeFields = intakeFields
+    .filter((field) => field.isActive)
+    .sort((a, b) => {
+      if (a.sortOrder !== b.sortOrder) {
+        return a.sortOrder - b.sortOrder;
+      }
+      return a.id.localeCompare(b.id);
+    })
+    .map(mapPublicIntakeField);
 
   return {
     service: {
@@ -250,6 +280,7 @@ function buildPublicPricingConfig(
       baseDurationMaxMinutes: service.maxDurationMinutes,
     },
     optionGroups: activeGroups,
+    intakeFields: activeIntakeFields,
   };
 }
 
@@ -359,7 +390,10 @@ export async function getPublicPricingConfig(
   serviceSlug: string,
   deps: Partial<PublicQuoteServiceDeps> = {},
 ): Promise<PublicPricingConfig> {
-  const { loadServiceContext, loadOptions } = { ...defaultDeps, ...deps };
+  const { loadServiceContext, loadOptions, loadIntakeFields } = {
+    ...defaultDeps,
+    ...deps,
+  };
 
   const service = await resolvePublicService(
     siteSlug,
@@ -367,8 +401,9 @@ export async function getPublicPricingConfig(
     loadServiceContext,
   );
   const { groups, options } = await loadTenantOptions(service, loadOptions);
+  const intakeFields = await loadIntakeFields(service.siteId, service.serviceId);
 
-  return buildPublicPricingConfig(service, groups, options);
+  return buildPublicPricingConfig(service, groups, options, intakeFields);
 }
 
 /**

@@ -200,6 +200,7 @@ describe('genericBookingRequestSchema', () => {
     slotStart: '2025-08-01T09:00:00+00:00',
     slotEnd: '2025-08-01T10:15:00+00:00',
     optionIds: [],
+    intakeData: {},
     locale: 'hu',
   };
 
@@ -277,6 +278,53 @@ describe('genericBookingRequestSchema', () => {
     const result = genericBookingRequestSchema.safeParse({
       ...validBody,
       name: '   ',
+    });
+    assert.equal(result.success, false);
+  });
+
+  it('accepts a missing intakeData and normalizes it to an empty object', () => {
+    const { intakeData, ...withoutIntake } = validBody;
+    const result = genericBookingRequestSchema.safeParse(withoutIntake);
+    assert.equal(result.success, true);
+    if (!result.success) return;
+    assert.deepEqual(result.data.intakeData, {});
+  });
+
+  it('accepts an empty intakeData object', () => {
+    const result = genericBookingRequestSchema.safeParse(validBody);
+    assert.equal(result.success, true);
+    if (!result.success) return;
+    assert.deepEqual(result.data.intakeData, {});
+  });
+
+  it('rejects null intakeData', () => {
+    const result = genericBookingRequestSchema.safeParse({
+      ...validBody,
+      intakeData: null,
+    });
+    assert.equal(result.success, false);
+  });
+
+  it('rejects array intakeData', () => {
+    const result = genericBookingRequestSchema.safeParse({
+      ...validBody,
+      intakeData: ['x'],
+    });
+    assert.equal(result.success, false);
+  });
+
+  it('rejects string intakeData', () => {
+    const result = genericBookingRequestSchema.safeParse({
+      ...validBody,
+      intakeData: 'x',
+    });
+    assert.equal(result.success, false);
+  });
+
+  it('rejects non-string intakeData values', () => {
+    const result = genericBookingRequestSchema.safeParse({
+      ...validBody,
+      intakeData: { 'dog-breed': 123 },
     });
     assert.equal(result.success, false);
   });

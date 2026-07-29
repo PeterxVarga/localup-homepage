@@ -38,6 +38,8 @@ import {
   PublicQuoteServiceError,
 } from '../booking-pricing/publicQuoteService';
 import type { PublicQuoteResponse } from '../booking-pricing/types';
+import { loadBookingServiceIntakeFields } from '../booking-intake/queries';
+import { validateBookingIntake } from '../booking-intake/validateBookingIntake';
 import type {
   GenericBookingInput,
   GenericBookingOutcome,
@@ -105,6 +107,18 @@ export interface CreateBookingDeps {
     siteId: string,
     siteSlug: string,
   ) => Promise<GenericCalendarProvider>;
+  loadIntakeFields?: (
+    siteId: string,
+    serviceId: string,
+  ) => Promise<
+    import('../booking-intake/types').BookingServiceIntakeField[]
+  >;
+  validateIntake?: (
+    raw: unknown,
+    fields: import('../booking-intake/types').BookingServiceIntakeField[],
+  ) =>
+    | { data: Record<string, string> }
+    | { code: 'invalid_intake' };
   insertBooking?: (params: {
     siteId: string;
     serviceId: string;
@@ -119,6 +133,7 @@ export interface CreateBookingDeps {
     priceMode: string | null;
     currency: string | null;
     pricingSnapshot: Record<string, unknown>;
+    normalizedIntakeData: Record<string, string>;
   }) => Promise<
     | { ok: true; booking: { id: string; slot_start: string; slot_end: string } }
     | { ok: false; errorCode: string }
@@ -153,6 +168,8 @@ const defaultDeps: Required<CreateBookingDeps> = {
     return resolveGenericAvailabilityProvider(siteId, siteSlug);
   },
   calculateQuote: calculateQuoteForService,
+  loadIntakeFields: loadBookingServiceIntakeFields,
+  validateIntake: validateBookingIntake,
   async insertBooking(params) {
     const { data, error } = await getSupabase()
       .from('bookings')
@@ -179,7 +196,7 @@ const defaultDeps: Required<CreateBookingDeps> = {
         price_mode: params.priceMode,
         currency: params.currency,
         pricing_snapshot: params.pricingSnapshot,
-        intake_data: {},
+        intake_data: params.normalizedIntakeData,
       })
       .select('id, slot_start, slot_end')
       .single();
@@ -290,6 +307,8 @@ export async function createGenericBooking(
     resolveSiteEmailConfig: resolveEmailConfig,
     resolveCalendarProvider,
     calculateQuote,
+    loadIntakeFields,
+    validateIntake,
     insertBooking,
     createCalendarEvent,
     updateBookingCalendarSync,
@@ -314,6 +333,30 @@ export async function createGenericBooking(
     }
 
     console.error('Generic create: failed to calculate quote');
+    return {
+      success: false,
+      error: 'service_unavailable',
+      message:
+        'A foglalás jelenleg nem kezelhető online. Kérlek próbáld újra később.',
+    };
+  }
+
+  // 1. Validate intake data against the server-owned service contract.
+  //    The client may only submit values for configured, active field slugs.
+  let normalizedIntakeData: Record<string, string>;
+  try {
+    const intakeFields = await loadIntakeFields(service.siteId, service.serviceId);
+    const intakeResult = validateIntake(input.intakeData, intakeFields);
+    if ('code' in intakeResult) {
+      return {
+        success: false,
+        error: 'invalid_intake',
+        message: 'The submitted intake information is invalid.',
+      };
+    }
+    normalizedIntakeData = intakeResult.data;
+  } catch (err) {
+    console.error('Generic create: failed to validate intake data');
     return {
       success: false,
       error: 'service_unavailable',
@@ -414,6 +457,7 @@ export async function createGenericBooking(
     priceMode: quote.priceMinMinor === null ? null : quote.priceMode,
     currency: quote.priceMinMinor === null ? null : quote.currency,
     pricingSnapshot,
+    normalizedIntakeData,
   });
 
   if (!data.ok) {

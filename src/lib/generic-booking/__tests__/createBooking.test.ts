@@ -12,6 +12,7 @@ import {
   type CreateBookingDeps,
   type GenericBookingInput,
 } from '../createBooking';
+import { validateBookingIntake } from '../../booking-intake/validateBookingIntake';
 import type { BookingServiceContext } from '../../booking-service/types';
 import type { GenericCalendarProvider } from '../../calendar/genericAvailabilityResolver';
 import type { CreateEventResult } from '../../calendar/types';
@@ -53,6 +54,7 @@ const baseInput: GenericBookingInput = {
   slotStart,
   slotEnd,
   optionIds: [],
+  intakeData: {},
   locale: 'hu',
 };
 
@@ -97,6 +99,21 @@ function baseDeps(overrides: Partial<CreateBookingDeps> = {}): Required<CreateBo
     },
     async resolveCalendarProvider() {
       return makeProvider();
+    },
+    async loadIntakeFields() {
+      return [];
+    },
+    validateIntake: (raw) => {
+      if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+        const data: Record<string, string> = {};
+        for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+          if (typeof value === 'string') {
+            data[key] = value.trim();
+          }
+        }
+        return { data };
+      }
+      return { code: 'invalid_intake' as const };
     },
     async insertBooking() {
       return {
@@ -487,5 +504,167 @@ describe('createGenericBooking', () => {
     assert.equal(insertParams.pricingSnapshot.priceMaxMinor, null);
     assert.equal(insertParams.pricingSnapshot.priceMode, 'fixed');
     assert.equal(insertParams.pricingSnapshot.currency, 'HUF');
+  });
+
+  it('returns invalid_intake when a required intake field is missing', async () => {
+    let insertCalled = false;
+    let calendarCreated = false;
+
+    const result = await createGenericBooking(
+      baseInput,
+      [],
+      serviceContext,
+      baseDeps({
+        loadIntakeFields: async () => [
+          {
+            id: 'breed-id',
+            siteId: serviceContext.siteId,
+            serviceId: serviceContext.serviceId,
+            slug: 'dog-breed',
+            label: 'Kutyafajta',
+            fieldType: 'text',
+            isRequired: true,
+            minLength: 2,
+            maxLength: 50,
+            sortOrder: 0,
+            isActive: true,
+          },
+        ],
+        validateIntake: validateBookingIntake,
+        insertBooking: async () => {
+          insertCalled = true;
+          return {
+            ok: true,
+            booking: {
+              id: 'should-not-happen',
+              slot_start: slotStart,
+              slot_end: slotEnd,
+            },
+          };
+        },
+        createCalendarEvent: async () => {
+          calendarCreated = true;
+          return { ok: true, provider: 'mock', eventId: 'evt' };
+        },
+      }),
+    );
+
+    assert.equal(result.success, false);
+    if (result.success) return;
+    assert.equal(result.error, 'invalid_intake');
+    assert.equal(insertCalled, false);
+    assert.equal(calendarCreated, false);
+  });
+
+  it('stores normalized intake data when validation succeeds', async () => {
+    let insertParams: Parameters<Required<CreateBookingDeps>['insertBooking']>[0] | null = null;
+
+    const result = await createGenericBooking(
+      {
+        ...baseInput,
+        intakeData: {
+          'dog-breed': '  Golden Retriever  ',
+          'temperament-notes': '',
+        },
+      },
+      [],
+      serviceContext,
+      baseDeps({
+        loadIntakeFields: async () => [
+          {
+            id: 'breed-id',
+            siteId: serviceContext.siteId,
+            serviceId: serviceContext.serviceId,
+            slug: 'dog-breed',
+            label: 'Kutyafajta',
+            fieldType: 'text',
+            isRequired: true,
+            minLength: 2,
+            maxLength: 50,
+            sortOrder: 0,
+            isActive: true,
+          },
+          {
+            id: 'notes-id',
+            siteId: serviceContext.siteId,
+            serviceId: serviceContext.serviceId,
+            slug: 'temperament-notes',
+            label: 'Temperamentum',
+            fieldType: 'textarea',
+            isRequired: false,
+            minLength: 0,
+            maxLength: 500,
+            sortOrder: 1,
+            isActive: true,
+          },
+        ],
+        validateIntake: validateBookingIntake,
+        insertBooking: async (params) => {
+          insertParams = params;
+          return {
+            ok: true,
+            booking: {
+              id: 'test-booking-id',
+              slot_start: params.input.slotStart,
+              slot_end: params.input.slotEnd,
+            },
+          };
+        },
+      }),
+    );
+
+    assert.equal(result.success, true);
+    assert.ok(insertParams);
+    if (!insertParams) return;
+    assert.deepEqual(insertParams.normalizedIntakeData, {
+      'dog-breed': 'Golden Retriever',
+    });
+  });
+
+  it('rejects unknown intake slugs at the domain layer even if the route accepted them', async () => {
+    let insertCalled = false;
+
+    const result = await createGenericBooking(
+      {
+        ...baseInput,
+        intakeData: { 'dog-breed': 'Beagle', 'hacker-field': 'x' },
+      },
+      [],
+      serviceContext,
+      baseDeps({
+        loadIntakeFields: async () => [
+          {
+            id: 'breed-id',
+            siteId: serviceContext.siteId,
+            serviceId: serviceContext.serviceId,
+            slug: 'dog-breed',
+            label: 'Kutyafajta',
+            fieldType: 'text',
+            isRequired: true,
+            minLength: 2,
+            maxLength: 50,
+            sortOrder: 0,
+            isActive: true,
+          },
+        ],
+        validateIntake: validateBookingIntake,
+        insertBooking: async () => {
+          insertCalled = true;
+          return {
+            ok: true,
+            booking: {
+              id: 'should-not-happen',
+              slot_start: slotStart,
+              slot_end: slotEnd,
+            },
+          };
+        },
+      }),
+    );
+
+    assert.equal(result.success, false);
+    if (result.success) return;
+    assert.equal(result.error, 'invalid_intake');
+    assert.equal(insertCalled, false);
   });
 });
