@@ -715,7 +715,9 @@ BEGIN
     FROM public.booking_service_options
     WHERE site_id = 'd1111111-1111-1111-1111-111111111111'::uuid
       AND is_active = true
-      AND option_group_id IN (SELECT id FROM expected_groups)
+      AND option_group_id IN (
+        SELECT DISTINCT option_group_id FROM expected_options
+      )
   )
   SELECT count(*) INTO v_actual_count
   FROM (
