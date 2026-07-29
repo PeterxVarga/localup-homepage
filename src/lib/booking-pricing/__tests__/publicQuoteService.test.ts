@@ -30,6 +30,7 @@ const baseService: BookingServiceContext = {
   serviceName: 'Dog Grooming',
   scheduleId: '33333333-3333-3333-3333-333333333333',
   durationMinutes: 60,
+  maxDurationMinutes: null,
   slotIntervalMinutes: 15,
   minimumNoticeMinutes: 0,
   bookingWindowDays: 14,
@@ -41,6 +42,7 @@ const baseService: BookingServiceContext = {
   publicBookingEnabled: true,
   pricingMode: 'fixed',
   basePriceMinor: 12000,
+  basePriceMaxMinor: null,
   currency: 'HUF',
 };
 
@@ -73,7 +75,9 @@ function makeOption(
     serviceId: baseService.serviceId,
     label: overrides.slug,
     priceDeltaMinor: 0,
+    priceDeltaMaxMinor: null,
     durationDeltaMinutes: 0,
+    durationDeltaMaxMinutes: null,
     sortOrder: 0,
     isActive: true,
     ...overrides,
@@ -101,8 +105,10 @@ describe('getPublicPricingConfig', () => {
 
     assert.equal(config.service.pricingMode, 'fixed');
     assert.equal(config.service.basePriceMinor, 12000);
+    assert.equal(config.service.basePriceMaxMinor, null);
     assert.equal(config.service.currency, 'HUF');
     assert.equal(config.service.baseDurationMinutes, 60);
+    assert.equal(config.service.baseDurationMaxMinutes, null);
     assert.deepEqual(config.optionGroups, []);
   });
 
@@ -121,8 +127,10 @@ describe('getPublicPricingConfig', () => {
     assert.ok(serviceKeys.includes('name'));
     assert.ok(serviceKeys.includes('pricingMode'));
     assert.ok(serviceKeys.includes('basePriceMinor'));
+    assert.ok(serviceKeys.includes('basePriceMaxMinor'));
     assert.ok(serviceKeys.includes('currency'));
     assert.ok(serviceKeys.includes('baseDurationMinutes'));
+    assert.ok(serviceKeys.includes('baseDurationMaxMinutes'));
   });
 
   it('excludes inactive groups and options', async () => {
@@ -212,10 +220,12 @@ describe('calculateQuoteForService', () => {
       { loadOptions: async () => ({ groups: [], options: [] }) },
     );
 
-    assert.equal(quote.priceMinor, 12000);
+    assert.equal(quote.priceMinMinor, 12000);
+    assert.equal(quote.priceMaxMinor, 12000);
     assert.equal(quote.currency, 'HUF');
     assert.equal(quote.priceMode, 'fixed');
-    assert.equal(quote.durationMinutes, 60);
+    assert.equal(quote.durationMinMinutes, 60);
+    assert.equal(quote.durationMaxMinutes, 60);
     assert.deepEqual(quote.selectedOptions, []);
   });
 
@@ -241,8 +251,10 @@ describe('calculateQuoteForService', () => {
       { loadOptions: async () => ({ groups: [group], options: [option] }) },
     );
 
-    assert.equal(quote.priceMinor, 14500);
-    assert.equal(quote.durationMinutes, 75);
+    assert.equal(quote.priceMinMinor, 14500);
+    assert.equal(quote.priceMaxMinor, 14500);
+    assert.equal(quote.durationMinMinutes, 75);
+    assert.equal(quote.durationMaxMinutes, 75);
     assert.equal(quote.selectedOptions.length, 1);
     assert.equal(quote.selectedOptions[0]?.groupSlug, 'extras');
     assert.equal(quote.selectedOptions[0]?.optionSlug, 'deep-clean');
@@ -273,9 +285,11 @@ describe('getPublicQuote', () => {
     );
 
     assert.equal(quote.priceMode, 'fixed');
-    assert.equal(quote.priceMinor, 12000);
+    assert.equal(quote.priceMinMinor, 12000);
+    assert.equal(quote.priceMaxMinor, 12000);
     assert.equal(quote.currency, 'HUF');
-    assert.equal(quote.durationMinutes, 60);
+    assert.equal(quote.durationMinMinutes, 60);
+    assert.equal(quote.durationMaxMinutes, 60);
     assert.deepEqual(quote.selectedOptions, []);
   });
 
@@ -307,8 +321,10 @@ describe('getPublicQuote', () => {
     );
 
     assert.equal(quote.priceMode, 'estimated');
-    assert.equal(quote.priceMinor, 17900);
-    assert.equal(quote.durationMinutes, 75);
+    assert.equal(quote.priceMinMinor, 17900);
+    assert.equal(quote.priceMaxMinor, 17900);
+    assert.equal(quote.durationMinMinutes, 75);
+    assert.equal(quote.durationMaxMinutes, 75);
   });
 
   it('calculates 60 to 75 minutes via duration delta', async () => {
@@ -334,8 +350,10 @@ describe('getPublicQuote', () => {
       makeDeps(baseService, [group], [option]),
     );
 
-    assert.equal(quote.priceMinor, 14500);
-    assert.equal(quote.durationMinutes, 75);
+    assert.equal(quote.priceMinMinor, 14500);
+    assert.equal(quote.priceMaxMinor, 14500);
+    assert.equal(quote.durationMinMinutes, 75);
+    assert.equal(quote.durationMaxMinutes, 75);
   });
 
   it('returns null price when basePriceMinor is null', async () => {
@@ -363,10 +381,12 @@ describe('getPublicQuote', () => {
       ),
     );
 
-    assert.equal(quote.priceMinor, null);
+    assert.equal(quote.priceMinMinor, null);
+    assert.equal(quote.priceMaxMinor, null);
     assert.equal(quote.currency, 'HUF');
     assert.equal(quote.priceMode, 'fixed');
-    assert.equal(quote.durationMinutes, 75);
+    assert.equal(quote.durationMinMinutes, 75);
+    assert.equal(quote.durationMaxMinutes, 75);
   });
 
   it('rejects missing required group selection', async () => {
@@ -559,5 +579,46 @@ describe('getPublicQuote', () => {
         err instanceof PublicQuoteServiceError &&
         err.code === 'invalid_request',
     );
+  });
+
+  it('returns estimated price and duration ranges', async () => {
+    const group = makeGroup({
+      id: 'g1',
+      slug: 'size',
+      selectionMode: 'single',
+      isRequired: true,
+      minSelections: 1,
+    });
+    const option = makeOption({
+      id: '11111111-1111-4111-9111-111111111111',
+      slug: 'medium',
+      optionGroupId: 'g1',
+      priceDeltaMinor: 2000,
+      priceDeltaMaxMinor: 4000,
+      durationDeltaMinutes: 15,
+      durationDeltaMaxMinutes: 30,
+    });
+
+    const service = {
+      ...baseService,
+      pricingMode: 'estimated' as const,
+      basePriceMinor: 14900,
+      basePriceMaxMinor: 16900,
+      durationMinutes: 90,
+      maxDurationMinutes: 120,
+    };
+
+    const quote = await getPublicQuote(
+      'demo',
+      'grooming',
+      ['11111111-1111-4111-9111-111111111111'],
+      makeDeps(service, [group], [option]),
+    );
+
+    assert.equal(quote.priceMode, 'estimated');
+    assert.equal(quote.priceMinMinor, 16900);
+    assert.equal(quote.priceMaxMinor, 20900);
+    assert.equal(quote.durationMinMinutes, 105);
+    assert.equal(quote.durationMaxMinutes, 150);
   });
 });

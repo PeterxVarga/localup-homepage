@@ -52,17 +52,21 @@ function buildPricingSnapshot(
   quote: PublicQuoteResponse,
 ): Record<string, unknown> {
   return {
-    version: 1,
+    version: 2,
     service: {
       slug: service.serviceSlug,
       name: service.serviceName,
       basePriceMinor: service.basePriceMinor,
+      basePriceMaxMinor: service.basePriceMaxMinor,
       baseDurationMinutes: service.durationMinutes,
+      baseDurationMaxMinutes: service.maxDurationMinutes,
     },
-    priceMinor: quote.priceMinor,
+    priceMinMinor: quote.priceMinMinor,
+    priceMaxMinor: quote.priceMaxMinor,
     priceMode: quote.priceMode,
     currency: quote.currency,
-    durationMinutes: quote.durationMinutes,
+    durationMinMinutes: quote.durationMinMinutes,
+    durationMaxMinutes: quote.durationMaxMinutes,
     selectedOptions: quote.selectedOptions,
   };
 }
@@ -111,6 +115,7 @@ export interface CreateBookingDeps {
     tokenEncrypted: string;
     tokenExpiresAt: string;
     calculatedPriceMinor: number | null;
+    calculatedPriceMaxMinor: number | null;
     priceMode: string | null;
     currency: string | null;
     pricingSnapshot: Record<string, unknown>;
@@ -170,6 +175,7 @@ const defaultDeps: Required<CreateBookingDeps> = {
         locale: params.input.locale || 'hu',
         source: 'website',
         calculated_price_minor: params.calculatedPriceMinor,
+        calculated_price_max_minor: params.calculatedPriceMaxMinor,
         price_mode: params.priceMode,
         currency: params.currency,
         pricing_snapshot: params.pricingSnapshot,
@@ -318,11 +324,12 @@ export async function createGenericBooking(
 
   const effectiveService: BookingServiceContext = {
     ...service,
-    durationMinutes: quote.durationMinutes,
+    durationMinutes: quote.durationMaxMinutes,
+    maxDurationMinutes: null,
   };
 
-  // 1. Duration must match the server-side calculated quote.
-  const expectedEnd = getExpectedSlotEnd(input.slotStart, quote.durationMinutes);
+  // 1. Duration must match the server-side calculated quote max.
+  const expectedEnd = getExpectedSlotEnd(input.slotStart, quote.durationMaxMinutes);
   const requestedEnd = new Date(input.slotEnd).toISOString();
   if (expectedEnd !== requestedEnd) {
     return {
@@ -402,9 +409,10 @@ export async function createGenericBooking(
     tokenHash,
     tokenEncrypted,
     tokenExpiresAt,
-    calculatedPriceMinor: quote.priceMinor,
-    priceMode: quote.priceMinor === null ? null : quote.priceMode,
-    currency: quote.priceMinor === null ? null : quote.currency,
+    calculatedPriceMinor: quote.priceMinMinor,
+    calculatedPriceMaxMinor: quote.priceMinMinor === null ? null : quote.priceMaxMinor,
+    priceMode: quote.priceMinMinor === null ? null : quote.priceMode,
+    currency: quote.priceMinMinor === null ? null : quote.currency,
     pricingSnapshot,
   });
 

@@ -25,6 +25,7 @@ import type {
   PublicPricingConfig,
   PublicQuoteResponse,
   PublicSelectedOption,
+  SelectedOptionQuote,
 } from './types';
 
 export class PublicQuoteServiceError extends Error {
@@ -186,7 +187,9 @@ function mapPublicOption(option: BookingServiceOption): PublicOptionConfig {
     slug: option.slug,
     label: option.label,
     priceDeltaMinor: option.priceDeltaMinor,
+    priceDeltaMaxMinor: option.priceDeltaMaxMinor,
     durationDeltaMinutes: option.durationDeltaMinutes,
+    durationDeltaMaxMinutes: option.durationDeltaMaxMinutes,
   };
 }
 
@@ -241,15 +244,17 @@ function buildPublicPricingConfig(
       name: service.serviceName,
       pricingMode: service.pricingMode as PricingMode,
       basePriceMinor: service.basePriceMinor,
+      basePriceMaxMinor: service.basePriceMaxMinor,
       currency: service.currency,
       baseDurationMinutes: service.durationMinutes,
+      baseDurationMaxMinutes: service.maxDurationMinutes,
     },
     optionGroups: activeGroups,
   };
 }
 
 function mapPublicSelectedOption(
-  selected: { optionId: string; groupSlug: string; optionSlug: string; label: string; priceDeltaMinor: number; durationDeltaMinutes: number },
+  selected: SelectedOptionQuote,
 ): PublicSelectedOption {
   return {
     id: selected.optionId,
@@ -257,16 +262,20 @@ function mapPublicSelectedOption(
     optionSlug: selected.optionSlug,
     label: selected.label,
     priceDeltaMinor: selected.priceDeltaMinor,
+    priceDeltaMaxMinor: selected.priceDeltaMaxMinor,
     durationDeltaMinutes: selected.durationDeltaMinutes,
+    durationDeltaMaxMinutes: selected.durationDeltaMaxMinutes,
   };
 }
 
 function buildPublicQuoteResponse(quote: ReturnType<typeof calculateBookingQuote>): PublicQuoteResponse {
   return {
-    priceMinor: quote.priceMinor,
+    priceMinMinor: quote.priceMinMinor,
+    priceMaxMinor: quote.priceMaxMinor,
     currency: quote.currency,
     priceMode: quote.priceMode,
-    durationMinutes: quote.durationMinutes,
+    durationMinMinutes: quote.durationMinMinutes,
+    durationMaxMinutes: quote.durationMaxMinutes,
     selectedOptions: quote.selectedOptions.map(mapPublicSelectedOption),
   };
 }

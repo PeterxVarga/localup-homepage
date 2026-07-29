@@ -115,30 +115,60 @@ interface BookingRow {
   pricing_snapshot: Record<string, unknown> | null;
 }
 
-function getSnapshotDurationMinutes(booking: BookingRow): number | null {
+function getSnapshotDurationMaxMinutes(booking: BookingRow): number | null {
   const snapshot = booking.pricing_snapshot;
-  const hasDurationField =
-    snapshot && typeof snapshot === 'object' && 'durationMinutes' in snapshot;
+  if (!snapshot || typeof snapshot !== 'object') {
+    // Legacy or missing snapshot: derive from the stored slot interval.
+    return deriveDurationFromSlotInterval(booking);
+  }
 
-  if (hasDurationField) {
-    const duration = (snapshot as Record<string, unknown>).durationMinutes;
+  const record = snapshot as Record<string, unknown>;
+  const version = record.version;
+
+  if (version === 2) {
+    const durationMaxMinutes = record.durationMaxMinutes;
     if (
-      typeof duration === 'number' &&
-      Number.isFinite(duration) &&
-      Number.isInteger(duration) &&
-      duration >= 5 &&
-      duration <= 480 &&
-      duration % 5 === 0
+      typeof durationMaxMinutes === 'number' &&
+      Number.isFinite(durationMaxMinutes) &&
+      Number.isInteger(durationMaxMinutes) &&
+      durationMaxMinutes >= 5 &&
+      durationMaxMinutes <= 480 &&
+      durationMaxMinutes % 5 === 0
     ) {
-      return duration;
+      return durationMaxMinutes;
     }
 
-    // Explicit but invalid duration: fail-closed; do not hide a corrupt
-    // snapshot by falling back to the stored slot interval.
+    // v2 with missing or invalid range: fail-closed.
     return null;
   }
 
-  // Legacy or {} snapshot: derive duration from the stored slot interval.
+  // v1 or unversioned snapshot: fall back to scalar durationMinutes.
+  // If the snapshot explicitly carries a durationMinutes value but it is
+  // corrupt, we fail-closed; we only derive from the stored slot interval
+  // when the snapshot has no duration information at all.
+  if ('durationMinutes' in record) {
+    const durationMinutes = record.durationMinutes;
+    if (
+      typeof durationMinutes === 'number' &&
+      Number.isFinite(durationMinutes) &&
+      Number.isInteger(durationMinutes) &&
+      durationMinutes >= 5 &&
+      durationMinutes <= 480 &&
+      durationMinutes % 5 === 0
+    ) {
+      return durationMinutes;
+    }
+
+    // Corrupt explicit legacy value: fail-closed.
+    return null;
+  }
+
+  // Empty or unversioned snapshot with no duration information: derive from
+  // the stored slot interval as a last legacy fallback.
+  return deriveDurationFromSlotInterval(booking);
+}
+
+function deriveDurationFromSlotInterval(booking: BookingRow): number | null {
   const startMs = new Date(booking.slot_start).getTime();
   const endMs = new Date(booking.slot_end).getTime();
   if (Number.isNaN(startMs) || Number.isNaN(endMs)) {
@@ -576,7 +606,7 @@ export async function rescheduleGenericBooking(
 
   // 6. New slot duration is governed by the original booking's pricing
   //    snapshot, so the booked option set is preserved during reschedule.
-  const snapshotDuration = getSnapshotDurationMinutes(booking);
+  const snapshotDuration = getSnapshotDurationMaxMinutes(booking);
   if (snapshotDuration === null) {
     console.error('Generic reschedule: missing or invalid pricing snapshot duration');
     return {
@@ -615,10 +645,23 @@ export async function rescheduleGenericBooking(
     };
   }
 
+  // The availability rule check must use the concrete duration preserved
+  // in the pricing snapshot, not the current service default.
+  const effectiveService: BookingServiceContext = {
+    ...service,
+    durationMinutes: snapshotDuration,
+    maxDurationMinutes: null,
+  };
+
   // 8. Availability rules.
   let followsRules: boolean;
   try {
-    followsRules = await checkRules(newSlotStart, newSlotEnd, service, nowDate);
+    followsRules = await checkRules(
+      newSlotStart,
+      newSlotEnd,
+      effectiveService,
+      nowDate,
+    );
   } catch (err) {
     console.error('Generic reschedule: availability rule check failed');
     return {

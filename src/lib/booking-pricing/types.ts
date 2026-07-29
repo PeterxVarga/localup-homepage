@@ -32,7 +32,9 @@ export interface BookingServiceOption {
   slug: string;
   label: string;
   priceDeltaMinor: number;
+  priceDeltaMaxMinor: number | null;
   durationDeltaMinutes: number;
+  durationDeltaMaxMinutes: number | null;
   sortOrder: number;
   isActive: boolean;
 }
@@ -44,14 +46,18 @@ export interface SelectedOptionQuote {
   optionSlug: string;
   label: string;
   priceDeltaMinor: number;
+  priceDeltaMaxMinor: number | null;
   durationDeltaMinutes: number;
+  durationDeltaMaxMinutes: number | null;
 }
 
 export interface BookingQuote {
-  priceMinor: number | null;
+  priceMinMinor: number | null;
+  priceMaxMinor: number | null;
   currency: string;
   priceMode: PricingMode;
-  durationMinutes: number;
+  durationMinMinutes: number;
+  durationMaxMinutes: number;
   selectedOptions: SelectedOptionQuote[];
 }
 
@@ -79,8 +85,10 @@ export interface PublicServiceConfig {
   name: string;
   pricingMode: PricingMode;
   basePriceMinor: number | null;
+  basePriceMaxMinor: number | null;
   currency: string;
   baseDurationMinutes: number;
+  baseDurationMaxMinutes: number | null;
 }
 
 export interface PublicOptionConfig {
@@ -88,7 +96,9 @@ export interface PublicOptionConfig {
   slug: string;
   label: string;
   priceDeltaMinor: number;
+  priceDeltaMaxMinor: number | null;
   durationDeltaMinutes: number;
+  durationDeltaMaxMinutes: number | null;
 }
 
 export interface PublicOptionGroupConfig {
@@ -112,13 +122,17 @@ export interface PublicSelectedOption {
   optionSlug: string;
   label: string;
   priceDeltaMinor: number;
+  priceDeltaMaxMinor: number | null;
   durationDeltaMinutes: number;
+  durationDeltaMaxMinutes: number | null;
 }
 
 export interface PublicQuoteResponse {
-  priceMinor: number | null;
+  priceMinMinor: number | null;
+  priceMaxMinor: number | null;
   currency: string;
   priceMode: PricingMode;
-  durationMinutes: number;
+  durationMinMinutes: number;
+  durationMaxMinutes: number;
   selectedOptions: PublicSelectedOption[];
 }

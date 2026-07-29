@@ -30,6 +30,7 @@ const serviceContext: BookingServiceContext = {
   serviceName: 'Cosmetic Treatment',
   scheduleId: '33333333-3333-3333-3333-333333333333',
   durationMinutes: 75,
+  maxDurationMinutes: null,
   slotIntervalMinutes: 30,
   minimumNoticeMinutes: 0,
   bookingWindowDays: 14,
@@ -41,6 +42,7 @@ const serviceContext: BookingServiceContext = {
   publicBookingEnabled: true,
   pricingMode: 'fixed',
   basePriceMinor: null,
+  basePriceMaxMinor: null,
   currency: 'HUF',
 };
 
@@ -813,5 +815,101 @@ describe('rescheduleGenericBooking', () => {
 
     assertError(result, 'service_unavailable');
     assert.equal(emailCalled, false);
+  });
+
+  it('uses durationMaxMinutes from a v2 snapshot', async () => {
+    const rawToken = generateManagementToken();
+    const v2SlotEnd = '2025-09-01T11:30:00.000Z';
+    const { booking } = makeBooking({
+      slot_end: v2SlotEnd,
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+      pricing_snapshot: {
+        version: 2,
+        durationMinMinutes: 90,
+        durationMaxMinutes: 90,
+      },
+    });
+
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking),
+    );
+
+    assert.equal(result.success, true);
+    if (result.success !== true) return;
+    assert.equal(result.newSlotEnd, '2025-09-02T11:30:00.000Z');
+  });
+
+  it('falls back to stored slot interval when snapshot is null', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+      pricing_snapshot: null,
+    });
+
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking),
+    );
+
+    assert.equal(result.success, true);
+    if (result.success !== true) return;
+    assert.equal(result.newSlotEnd, newSlotEnd);
+  });
+
+  it('fails closed when a v2 snapshot has invalid durationMaxMinutes', async () => {
+    const rawToken = generateManagementToken();
+    const { booking } = makeBooking({
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+      pricing_snapshot: {
+        version: 2,
+        durationMaxMinutes: 999,
+      },
+    });
+
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking),
+    );
+
+    assertError(result, 'service_unavailable');
+  });
+
+  it('validates the new slot using the snapshot duration, not the service default', async () => {
+    const rawToken = generateManagementToken();
+    const v2SlotEnd = '2025-09-01T11:30:00.000Z';
+    const { booking } = makeBooking({
+      slot_end: v2SlotEnd,
+      management_token_hash: hashManagementToken(rawToken),
+      management_token_encrypted: encryptManagementToken(rawToken),
+      pricing_snapshot: {
+        version: 2,
+        durationMinMinutes: 90,
+        durationMaxMinutes: 90,
+      },
+    });
+
+    let checkedService: BookingServiceContext | undefined;
+    const result = await rescheduleGenericBooking(
+      { rawToken, expectedOldSlotStart: currentSlotStart, newSlotStart },
+      baseDeps(booking, {
+        isSlotValidAccordingToRules: async (
+          _start: string,
+          _end: string,
+          service: BookingServiceContext,
+        ) => {
+          checkedService = service;
+          return true;
+        },
+      }),
+    );
+
+    assert.equal(result.success, true);
+    assert.ok(checkedService);
+    assert.equal(checkedService!.durationMinutes, 90);
+    assert.equal(checkedService!.maxDurationMinutes, null);
   });
 });

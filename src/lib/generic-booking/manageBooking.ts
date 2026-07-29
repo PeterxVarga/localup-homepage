@@ -37,6 +37,12 @@ export interface GenericManageBookingDetails {
   rescheduleCutoffPassed: boolean;
   rescheduleCount: number;
   maxReschedules: number;
+  priceMinMinor: number | null;
+  priceMaxMinor: number | null;
+  currency: string | null;
+  priceMode: string | null;
+  durationMinMinutes: number | null;
+  durationMaxMinutes: number | null;
 }
 
 export type GenericManageLookupResult =
@@ -56,6 +62,7 @@ interface BookingRow {
   management_token_encrypted: string;
   management_token_expires_at: string;
   reschedule_count: number;
+  pricing_snapshot: Record<string, unknown> | null;
 }
 
 export interface ManageBookingDeps {
@@ -71,7 +78,7 @@ const defaultDeps: Required<ManageBookingDeps> = {
     const { data, error } = await getSupabase()
       .from('bookings')
       .select(
-        'id, site_id, service_id, customer_name, customer_email, slot_start, slot_end, booking_status, management_token_encrypted, management_token_expires_at, reschedule_count',
+        'id, site_id, service_id, customer_name, customer_email, slot_start, slot_end, booking_status, management_token_encrypted, management_token_expires_at, reschedule_count, pricing_snapshot',
       )
       .eq('management_token_hash', hash)
       .maybeSingle();
@@ -95,6 +102,76 @@ function toEpochMs(value: string): number {
     throw new RangeError(`Invalid timestamp: ${value}`);
   }
   return ms;
+}
+
+interface PricingRange {
+  priceMinMinor: number | null;
+  priceMaxMinor: number | null;
+  currency: string | null;
+  priceMode: string | null;
+  durationMinMinutes: number | null;
+  durationMaxMinutes: number | null;
+}
+
+function extractPricingRangeFromSnapshot(
+  snapshot: Record<string, unknown> | null,
+): PricingRange {
+  if (!snapshot) {
+    return {
+      priceMinMinor: null,
+      priceMaxMinor: null,
+      currency: null,
+      priceMode: null,
+      durationMinMinutes: null,
+      durationMaxMinutes: null,
+    };
+  }
+
+  const version = snapshot.version;
+  const priceMode =
+    typeof snapshot.priceMode === 'string' ? snapshot.priceMode : null;
+  const currency =
+    typeof snapshot.currency === 'string' ? snapshot.currency : null;
+
+  if (version === 2) {
+    return {
+      priceMinMinor:
+        typeof snapshot.priceMinMinor === 'number'
+          ? snapshot.priceMinMinor
+          : null,
+      priceMaxMinor:
+        typeof snapshot.priceMaxMinor === 'number'
+          ? snapshot.priceMaxMinor
+          : null,
+      currency,
+      priceMode,
+      durationMinMinutes:
+        typeof snapshot.durationMinMinutes === 'number'
+          ? snapshot.durationMinMinutes
+          : null,
+      durationMaxMinutes:
+        typeof snapshot.durationMaxMinutes === 'number'
+          ? snapshot.durationMaxMinutes
+          : null,
+    };
+  }
+
+  // v1 or unversioned scalar snapshot: treat min === max.
+  const priceMinor =
+    typeof snapshot.priceMinor === 'number' ? snapshot.priceMinor : null;
+  const durationMinutes =
+    typeof snapshot.durationMinutes === 'number'
+      ? snapshot.durationMinutes
+      : null;
+
+  return {
+    priceMinMinor: priceMinor,
+    priceMaxMinor: priceMinor,
+    currency,
+    priceMode,
+    durationMinMinutes: durationMinutes,
+    durationMaxMinutes: durationMinutes,
+  };
 }
 
 /**
@@ -147,6 +224,8 @@ export async function getManageBookingDetails(
   const rescheduleCutoffMs =
     slotStartMs - service.rescheduleCutoffHours * 60 * 60 * 1000;
 
+  const pricingRange = extractPricingRangeFromSnapshot(booking.pricing_snapshot);
+
   return {
     status: 'found',
     details: {
@@ -162,6 +241,7 @@ export async function getManageBookingDetails(
       rescheduleCutoffPassed: nowMs > rescheduleCutoffMs,
       rescheduleCount: booking.reschedule_count,
       maxReschedules: service.maxReschedules,
+      ...pricingRange,
     },
   };
 }

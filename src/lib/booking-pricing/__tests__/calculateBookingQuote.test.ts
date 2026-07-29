@@ -26,6 +26,7 @@ const baseService: BookingServiceContext = {
   serviceName: 'Grooming',
   scheduleId: '33333333-3333-3333-3333-333333333333',
   durationMinutes: 60,
+  maxDurationMinutes: null,
   slotIntervalMinutes: 15,
   minimumNoticeMinutes: 0,
   bookingWindowDays: 14,
@@ -37,6 +38,7 @@ const baseService: BookingServiceContext = {
   publicBookingEnabled: true,
   pricingMode: 'fixed',
   basePriceMinor: 1000,
+  basePriceMaxMinor: null,
   currency: 'HUF',
 };
 
@@ -65,7 +67,9 @@ function makeOption(
     serviceId: baseService.serviceId,
     label: overrides.slug ?? overrides.id,
     priceDeltaMinor: 0,
+    priceDeltaMaxMinor: null,
     durationDeltaMinutes: 0,
+    durationDeltaMaxMinutes: null,
     sortOrder: 0,
     isActive: true,
     ...overrides,
@@ -83,8 +87,10 @@ describe('calculateBookingQuote', () => {
 
     assert.equal(quote.priceMode, 'fixed');
     assert.equal(quote.currency, 'HUF');
-    assert.equal(quote.priceMinor, 1000);
-    assert.equal(quote.durationMinutes, 60);
+    assert.equal(quote.priceMinMinor, 1000);
+    assert.equal(quote.priceMaxMinor, 1000);
+    assert.equal(quote.durationMinMinutes, 60);
+    assert.equal(quote.durationMaxMinutes, 60);
     assert.deepEqual(quote.selectedOptions, []);
   });
 
@@ -112,8 +118,10 @@ describe('calculateBookingQuote', () => {
     });
 
     assert.equal(quote.priceMode, 'estimated');
-    assert.equal(quote.priceMinor, 17900);
-    assert.equal(quote.durationMinutes, 90);
+    assert.equal(quote.priceMinMinor, 17900);
+    assert.equal(quote.priceMaxMinor, 17900);
+    assert.equal(quote.durationMinMinutes, 90);
+    assert.equal(quote.durationMaxMinutes, 90);
   });
 
   it('adds price and duration deltas from multiple options', () => {
@@ -153,8 +161,10 @@ describe('calculateBookingQuote', () => {
       selectedOptionIds: ['o1', 'o2'],
     });
 
-    assert.equal(quote.priceMinor, 19900);
-    assert.equal(quote.durationMinutes, 120);
+    assert.equal(quote.priceMinMinor, 19900);
+    assert.equal(quote.priceMaxMinor, 19900);
+    assert.equal(quote.durationMinMinutes, 120);
+    assert.equal(quote.durationMaxMinutes, 120);
   });
 
   it('returns null price when basePriceMinor is null', () => {
@@ -178,8 +188,22 @@ describe('calculateBookingQuote', () => {
       selectedOptionIds: ['o1'],
     });
 
-    assert.equal(quote.priceMinor, null);
-    assert.equal(quote.durationMinutes, 90);
+    assert.equal(quote.priceMinMinor, null);
+    assert.equal(quote.priceMaxMinor, null);
+    assert.equal(quote.durationMinMinutes, 90);
+    assert.equal(quote.durationMaxMinutes, 90);
+  });
+
+  it('keeps both price fields null when no price is configured', () => {
+    const quote = calculateBookingQuote({
+      service: { ...baseService, basePriceMinor: null, basePriceMaxMinor: null },
+      groups: [],
+      options: [],
+      selectedOptionIds: [],
+    });
+
+    assert.equal(quote.priceMinMinor, null);
+    assert.equal(quote.priceMaxMinor, null);
   });
 
   it('rejects a required single group with no selection', () => {
@@ -220,8 +244,10 @@ describe('calculateBookingQuote', () => {
       selectedOptionIds: [],
     });
 
-    assert.equal(quote.priceMinor, 1000);
-    assert.equal(quote.durationMinutes, 60);
+    assert.equal(quote.priceMinMinor, 1000);
+    assert.equal(quote.priceMaxMinor, 1000);
+    assert.equal(quote.durationMinMinutes, 60);
+    assert.equal(quote.durationMaxMinutes, 60);
     assert.equal(quote.selectedOptions.length, 0);
   });
 
@@ -489,8 +515,148 @@ describe('calculateBookingQuote', () => {
     });
 
     assert.equal(quote.priceMode, 'fixed');
-    assert.equal(quote.priceMinor, null);
-    assert.equal(quote.durationMinutes, 60);
+    assert.equal(quote.priceMinMinor, null);
+    assert.equal(quote.priceMaxMinor, null);
+    assert.equal(quote.durationMinMinutes, 60);
+    assert.equal(quote.durationMaxMinutes, 60);
     assert.deepEqual(quote.selectedOptions, []);
+  });
+
+  it('calculates estimated price and duration ranges from service and option max values', () => {
+    const service = {
+      ...baseService,
+      pricingMode: 'estimated' as const,
+      basePriceMinor: 14900,
+      basePriceMaxMinor: 16900,
+      durationMinutes: 90,
+      maxDurationMinutes: 120,
+    };
+    const group = makeGroup({ id: 'g1', slug: 'size', selectionMode: 'single' });
+    const option = makeOption({
+      id: 'o1',
+      slug: 'medium',
+      optionGroupId: 'g1',
+      priceDeltaMinor: 2000,
+      priceDeltaMaxMinor: 4000,
+      durationDeltaMinutes: 15,
+      durationDeltaMaxMinutes: 30,
+    });
+
+    const quote = calculateBookingQuote({
+      service,
+      groups: [group],
+      options: [option],
+      selectedOptionIds: ['o1'],
+    });
+
+    assert.equal(quote.priceMode, 'estimated');
+    assert.equal(quote.priceMinMinor, 16900);
+    assert.equal(quote.priceMaxMinor, 20900);
+    assert.equal(quote.durationMinMinutes, 105);
+    assert.equal(quote.durationMaxMinutes, 150);
+  });
+
+  it('falls back to min when max columns are unset', () => {
+    const service = {
+      ...baseService,
+      pricingMode: 'estimated' as const,
+      basePriceMinor: 14900,
+    };
+    const group = makeGroup({ id: 'g1', slug: 'size', selectionMode: 'single' });
+    const option = makeOption({
+      id: 'o1',
+      slug: 'medium',
+      optionGroupId: 'g1',
+      priceDeltaMinor: 3000,
+      durationDeltaMinutes: 30,
+    });
+
+    const quote = calculateBookingQuote({
+      service,
+      groups: [group],
+      options: [option],
+      selectedOptionIds: ['o1'],
+    });
+
+    assert.equal(quote.priceMinMinor, 17900);
+    assert.equal(quote.priceMaxMinor, 17900);
+    assert.equal(quote.durationMinMinutes, 90);
+    assert.equal(quote.durationMaxMinutes, 90);
+  });
+
+  it('rejects fixed pricing with mismatched base price range', () => {
+    const service = {
+      ...baseService,
+      pricingMode: 'fixed' as const,
+      basePriceMinor: 1000,
+      basePriceMaxMinor: 2000,
+    };
+
+    assert.throws(
+      () =>
+        calculateBookingQuote({
+          service,
+          groups: [],
+          options: [],
+          selectedOptionIds: [],
+        }),
+      (err: unknown) =>
+        err instanceof BookingPricingError &&
+        err.code === 'invalid_fixed_price_range',
+    );
+  });
+
+  it('rejects fixed pricing with mismatched option price range', () => {
+    const service = baseService;
+    const group = makeGroup({ id: 'g1', slug: 'size', selectionMode: 'single' });
+    const option = makeOption({
+      id: 'o1',
+      slug: 'medium',
+      optionGroupId: 'g1',
+      priceDeltaMinor: 1000,
+      priceDeltaMaxMinor: 2000,
+    });
+
+    assert.throws(
+      () =>
+        calculateBookingQuote({
+          service,
+          groups: [group],
+          options: [option],
+          selectedOptionIds: ['o1'],
+        }),
+      (err: unknown) =>
+        err instanceof BookingPricingError &&
+        err.code === 'invalid_fixed_price_range',
+    );
+  });
+
+  it('rejects invalid calculated duration range', () => {
+    const service = {
+      ...baseService,
+      durationMinutes: 60,
+      maxDurationMinutes: 120,
+    };
+    const group = makeGroup({ id: 'g1', slug: 'size', selectionMode: 'single' });
+    const option = makeOption({
+      id: 'o1',
+      slug: 'huge',
+      optionGroupId: 'g1',
+      durationDeltaMinutes: 420,
+      durationDeltaMaxMinutes: 450,
+    });
+
+    assert.throws(
+      () =>
+        calculateBookingQuote({
+          service,
+          groups: [group],
+          options: [option],
+          selectedOptionIds: ['o1'],
+        }),
+      (err: unknown) =>
+        err instanceof BookingPricingError &&
+        err.code === 'invalid_calculated_duration',
+    );
   });
 });

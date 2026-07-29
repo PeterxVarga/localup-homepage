@@ -26,6 +26,7 @@ const serviceContext: BookingServiceContext = {
   serviceName: 'Cosmetic Treatment',
   scheduleId: '33333333-3333-3333-3333-333333333333',
   durationMinutes: 75,
+  maxDurationMinutes: null,
   slotIntervalMinutes: 30,
   minimumNoticeMinutes: 0,
   bookingWindowDays: 14,
@@ -37,6 +38,7 @@ const serviceContext: BookingServiceContext = {
   publicBookingEnabled: true,
   pricingMode: 'fixed',
   basePriceMinor: null,
+  basePriceMaxMinor: null,
   currency: 'HUF',
 };
 
@@ -108,10 +110,12 @@ function baseDeps(overrides: Partial<CreateBookingDeps> = {}): Required<CreateBo
     },
     async calculateQuote(service) {
       return {
-        priceMinor: service.basePriceMinor,
+        priceMinMinor: service.basePriceMinor,
+        priceMaxMinor: service.basePriceMinor,
         currency: service.currency,
         priceMode: service.pricingMode,
-        durationMinutes: service.durationMinutes,
+        durationMinMinutes: service.durationMinutes,
+        durationMaxMinutes: service.maxDurationMinutes ?? service.durationMinutes,
         selectedOptions: [],
       };
     },
@@ -361,10 +365,12 @@ describe('createGenericBooking', () => {
       serviceContext,
       baseDeps({
         calculateQuote: async () => ({
-          priceMinor: 15000,
+          priceMinMinor: 15000,
+          priceMaxMinor: 15000,
           currency: 'HUF',
           priceMode: 'estimated',
-          durationMinutes: 90,
+          durationMinMinutes: 90,
+          durationMaxMinutes: 90,
           selectedOptions: [
             {
               id: '11111111-1111-4111-9111-111111111111',
@@ -372,7 +378,9 @@ describe('createGenericBooking', () => {
               optionSlug: 'deep-clean',
               label: 'Deep clean',
               priceDeltaMinor: 3000,
+              priceDeltaMaxMinor: null,
               durationDeltaMinutes: 15,
+              durationDeltaMaxMinutes: null,
             },
           ],
         }),
@@ -403,7 +411,8 @@ describe('createGenericBooking', () => {
     assert.equal(insertParams.calculatedPriceMinor, 15000);
     assert.equal(insertParams.priceMode, 'estimated');
     assert.equal(insertParams.currency, 'HUF');
-    assert.equal(insertParams.pricingSnapshot.durationMinutes, 90);
+    assert.equal(insertParams.pricingSnapshot.durationMinMinutes, 90);
+    assert.equal(insertParams.pricingSnapshot.durationMaxMinutes, 90);
     assert.equal(
       insertParams.pricingSnapshot.selectedOptions[0]?.id,
       '11111111-1111-4111-9111-111111111111',
@@ -417,10 +426,12 @@ describe('createGenericBooking', () => {
       serviceContext,
       baseDeps({
         calculateQuote: async () => ({
-          priceMinor: 15000,
+          priceMinMinor: 15000,
+          priceMaxMinor: 15000,
           currency: 'HUF',
           priceMode: 'estimated',
-          durationMinutes: 90,
+          durationMinMinutes: 90,
+          durationMaxMinutes: 90,
           selectedOptions: [],
         }),
       }),
@@ -444,10 +455,12 @@ describe('createGenericBooking', () => {
       serviceContext,
       baseDeps({
         calculateQuote: async () => ({
-          priceMinor: null,
+          priceMinMinor: null,
+          priceMaxMinor: null,
           currency: 'HUF',
           priceMode: 'fixed',
-          durationMinutes: 60,
+          durationMinMinutes: 60,
+          durationMaxMinutes: 60,
           selectedOptions: [],
         }),
         insertBooking: async (params) => {
@@ -470,7 +483,8 @@ describe('createGenericBooking', () => {
     assert.equal(insertParams.calculatedPriceMinor, null);
     assert.equal(insertParams.priceMode, null);
     assert.equal(insertParams.currency, null);
-    assert.equal(insertParams.pricingSnapshot.priceMinor, null);
+    assert.equal(insertParams.pricingSnapshot.priceMinMinor, null);
+    assert.equal(insertParams.pricingSnapshot.priceMaxMinor, null);
     assert.equal(insertParams.pricingSnapshot.priceMode, 'fixed');
     assert.equal(insertParams.pricingSnapshot.currency, 'HUF');
   });
