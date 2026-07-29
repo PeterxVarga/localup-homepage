@@ -1,0 +1,23 @@
+---
+import DogGroomingBookingFlow from '../../components/booking/DogGroomingBookingFlow';
+import '../../styles/global.css';
+
+const mode = import.meta.env.PUBLIC_DOG_BOOKING_MODE === 'live' ? 'live' : 'mock';
+---
+
+<!doctype html>
+<html lang="hu">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta
+      name="description"
+      content="Bundás kutyakozmetika – személyre szabott online időpontfoglalás."
+    />
+    <meta name="robots" content={mode === 'mock' ? 'noindex, nofollow' : 'index, follow'} />
+    <title>Időpontfoglalás | Bundás kutyakozmetika</title>
+  </head>
+  <body>
+    <DogGroomingBookingFlow client:load mode={mode} siteSlug="bundas-demo" />
+  </body>
+</html>
