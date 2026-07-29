@@ -94,6 +94,8 @@ CREATE TRIGGER booking_service_intake_fields_touch
 -- 2. Pre-condition: bundas-demo site and services must exist exactly
 -- ----------------------------------------------------------------
 DO $$
+DECLARE
+  service_check record;
 BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM public.sites
