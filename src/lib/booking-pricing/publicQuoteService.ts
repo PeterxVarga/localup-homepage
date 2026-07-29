@@ -16,6 +16,8 @@ import type { BookingServiceContext } from '../booking-service/types';
 import { calculateBookingQuote } from './calculateBookingQuote';
 import { loadBookingServiceOptions } from './queries';
 import { loadBookingServiceIntakeFields } from '../booking-intake/queries';
+import { resolveIntakeOptions } from './intakeOptionResolver';
+import { validateBookingIntake } from '../booking-intake/validateBookingIntake';
 import { BookingPricingError } from './types';
 import type {
   BookingServiceOption,
@@ -28,7 +30,11 @@ import type {
   PublicSelectedOption,
   SelectedOptionQuote,
 } from './types';
-import type { PublicIntakeField } from '../booking-intake/types';
+import type {
+  BookingIntakeData,
+  BookingServiceIntakeField,
+  PublicIntakeField,
+} from '../booking-intake/types';
 
 export class PublicQuoteServiceError extends Error {
   readonly code: 'service_unavailable' | 'invalid_request' | 'invalid_selection';
@@ -238,6 +244,19 @@ function mapPublicIntakeField(
     isRequired: field.isRequired,
     minLength: field.minLength,
     maxLength: field.maxLength,
+    minValue: field.minValue,
+    maxValue: field.maxValue,
+    minSelections: field.minSelections,
+    maxSelections: field.maxSelections,
+    options: field.options
+      .filter((o) => o.isActive)
+      .sort((a, b) => {
+        if (a.sortOrder !== b.sortOrder) {
+          return a.sortOrder - b.sortOrder;
+        }
+        return a.id.localeCompare(b.id);
+      })
+      .map((o) => ({ slug: o.slug, label: o.label })),
   };
 }
 
@@ -344,22 +363,78 @@ function handleBookingPricingError(err: BookingPricingError): never {
  *         input, 'invalid_selection' for option/selection rule violations,
  *         or 'service_unavailable' for config failures.
  */
+function looksLikeDeps(
+  value: unknown,
+): value is Partial<PublicQuoteServiceDeps> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    !Array.isArray(value) &&
+    ('loadOptions' in value || 'loadServiceContext' in value || 'loadIntakeFields' in value)
+  );
+}
+
 export async function calculateQuoteForService(
   service: BookingServiceContext,
   rawOptionIds: unknown,
-  deps: Partial<Pick<PublicQuoteServiceDeps, 'loadOptions'>> = {},
+  intakeDataOrDeps: BookingIntakeData | Partial<Pick<PublicQuoteServiceDeps, 'loadOptions' | 'loadIntakeFields'>> = {},
+  maybeDeps: Partial<Pick<PublicQuoteServiceDeps, 'loadOptions' | 'loadIntakeFields'>> = {},
+  mode: 'partial' | 'complete' = 'complete',
 ): Promise<PublicQuoteResponse> {
   const optionIds = validateOptionIds(rawOptionIds);
-  const { loadOptions } = { ...defaultDeps, ...deps };
+  const deps = looksLikeDeps(intakeDataOrDeps) ? intakeDataOrDeps : maybeDeps;
+  const intakeData = looksLikeDeps(intakeDataOrDeps)
+    ? {}
+    : (intakeDataOrDeps as BookingIntakeData);
+  const { loadOptions, loadIntakeFields } = { ...defaultDeps, ...deps };
 
   const { groups, options } = await loadTenantOptions(service, loadOptions);
+
+  // Load intake fields when the service has a dog-size option group (used for
+  // weight→size mapping) or when the client sent any intake data that must be
+  // validated against the server-owned contract.
+  const hasSizeGroup = groups.some(
+    (g) => g.isActive && g.slug === 'dog-size',
+  );
+  const hasIntakeData = Object.keys(intakeData).length > 0;
+  let fields: BookingServiceIntakeField[] = [];
+  if (hasSizeGroup || hasIntakeData) {
+    fields = await loadIntakeFields(service.siteId, service.serviceId);
+  }
+
+  if (hasIntakeData) {
+    const validation = validateBookingIntake(intakeData, fields);
+    if ('code' in validation) {
+      throw new PublicQuoteServiceError(
+        'invalid_intake',
+        'Invalid intake data for pricing.',
+      );
+    }
+  }
+
+  const resolution = resolveIntakeOptions(
+    optionIds,
+    intakeData,
+    fields,
+    groups,
+    options,
+  );
+  if ('error' in resolution) {
+    throw new PublicQuoteServiceError(
+      resolution.error,
+      resolution.error === 'invalid_intake'
+        ? 'Invalid intake data for pricing.'
+        : 'Invalid option selection.',
+    );
+  }
 
   try {
     const quote = calculateBookingQuote({
       service,
       groups,
       options,
-      selectedOptionIds: optionIds,
+      selectedOptionIds: resolution.optionIds,
+      mode,
     });
 
     return buildPublicQuoteResponse(quote);
@@ -418,8 +493,14 @@ export async function getPublicQuote(
   siteSlug: string,
   serviceSlug: string,
   rawOptionIds: unknown,
-  deps: Partial<PublicQuoteServiceDeps> = {},
+  intakeDataOrDeps: BookingIntakeData | Partial<PublicQuoteServiceDeps> = {},
+  maybeDeps: Partial<PublicQuoteServiceDeps> = {},
+  mode: 'partial' | 'complete' = 'complete',
 ): Promise<PublicQuoteResponse> {
+  const deps = looksLikeDeps(intakeDataOrDeps) ? intakeDataOrDeps : maybeDeps;
+  const intakeData = looksLikeDeps(intakeDataOrDeps)
+    ? {}
+    : (intakeDataOrDeps as BookingIntakeData);
   const { loadServiceContext } = { ...defaultDeps, ...deps };
 
   const service = await resolvePublicService(
@@ -428,5 +509,5 @@ export async function getPublicQuote(
     loadServiceContext,
   );
 
-  return calculateQuoteForService(service, rawOptionIds, deps);
+  return calculateQuoteForService(service, rawOptionIds, intakeData, deps, mode);
 }

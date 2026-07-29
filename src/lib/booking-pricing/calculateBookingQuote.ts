@@ -205,6 +205,7 @@ function resolveSelectedOptions(
 function validateGroupSelections(
   groups: BookingServiceOptionGroup[],
   selectedByGroupId: Map<string, BookingServiceOption[]>,
+  mode: 'partial' | 'complete',
 ): void {
   for (const group of groups) {
     if (!group.isActive) {
@@ -214,6 +215,13 @@ function validateGroupSelections(
     const selected = selectedByGroupId.get(group.id) ?? [];
     const count = selected.length;
 
+    // Partial mode lets the user progress step-by-step. A group that has no
+    // selection yet is simply skipped; once it has any selection, the same
+    // structural rules (single/max/min) apply as in complete mode.
+    if (mode === 'partial' && count === 0) {
+      continue;
+    }
+
     if (group.selectionMode === 'single') {
       if (count > 1) {
         throw new BookingPricingError(
@@ -222,7 +230,7 @@ function validateGroupSelections(
         );
       }
 
-      if (group.isRequired && count < 1) {
+      if (mode === 'complete' && group.isRequired && count < 1) {
         throw new BookingPricingError(
           `Required single-selection group ${group.slug} needs one option`,
           'required_group_not_met',
@@ -230,7 +238,7 @@ function validateGroupSelections(
       }
     }
 
-    if (count < group.minSelections) {
+    if (mode === 'complete' && count < group.minSelections) {
       throw new BookingPricingError(
         `Group ${group.slug} requires at least ${group.minSelections} selection(s)`,
         'min_selections_not_met',
@@ -441,7 +449,7 @@ function calculateFinalPriceRange(
 export function calculateBookingQuote(
   input: BookingQuoteInput,
 ): BookingQuote {
-  const { service, groups, options, selectedOptionIds } = input;
+  const { service, groups, options, selectedOptionIds, mode = 'complete' } = input;
 
   assertServiceContract(service);
   validateNoDuplicateOptionIds(selectedOptionIds);
@@ -464,7 +472,7 @@ export function calculateBookingQuote(
     selectedByGroupId.set(option.optionGroupId, list);
   }
 
-  validateGroupSelections(groups, selectedByGroupId);
+  validateGroupSelections(groups, selectedByGroupId, mode);
   validateOptionRangeContract(selected, service.pricingMode);
 
   const selectedOptions = buildSelectedOptionsQuote(selected, groupMap);

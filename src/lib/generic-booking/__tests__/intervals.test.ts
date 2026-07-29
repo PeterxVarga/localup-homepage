@@ -321,10 +321,10 @@ describe('genericBookingRequestSchema', () => {
     assert.equal(result.success, false);
   });
 
-  it('rejects non-string intakeData values', () => {
+  it('rejects unsupported intakeData value types', () => {
     const result = genericBookingRequestSchema.safeParse({
       ...validBody,
-      intakeData: { 'dog-breed': 123 },
+      intakeData: { 'dog-breed': true },
     });
     assert.equal(result.success, false);
   });

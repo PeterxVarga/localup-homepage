@@ -196,3 +196,176 @@ describe('validateBookingIntake', () => {
     assert.deepEqual(Object.keys(result.data), ['dog-breed', 'temperament-notes']);
   });
 });
+
+describe('typed intake values', () => {
+  const weightField = makeField({
+    slug: 'dog-weight-kg',
+    fieldType: 'number',
+    label: 'Testsúly',
+    isRequired: true,
+    minValue: 1,
+    maxValue: 100,
+  });
+
+  const ageField = makeField({
+    slug: 'dog-age-group',
+    fieldType: 'single_choice',
+    label: 'Életkor',
+    isRequired: true,
+    minSelections: 1,
+    maxSelections: 1,
+    options: [
+      {
+        id: 'puppy-id',
+        siteId: '11111111-1111-1111-1111-111111111111',
+        serviceId: '22222222-2222-2222-2222-222222222222',
+        intakeFieldId: 'dog-age-group-id',
+        slug: 'puppy',
+        label: 'Kölyök',
+        sortOrder: 0,
+        isActive: true,
+      },
+      {
+        id: 'adult-id',
+        siteId: '11111111-1111-1111-1111-111111111111',
+        serviceId: '22222222-2222-2222-2222-222222222222',
+        intakeFieldId: 'dog-age-group-id',
+        slug: 'adult',
+        label: 'Felnőtt',
+        sortOrder: 1,
+        isActive: true,
+      },
+    ],
+  });
+
+  const careField = makeField({
+    slug: 'care-considerations',
+    fieldType: 'multiple_choice',
+    label: 'Amire figyeljünk',
+    isRequired: false,
+    minSelections: 0,
+    maxSelections: 5,
+    options: [
+      {
+        id: 'anxious-id',
+        siteId: '11111111-1111-1111-1111-111111111111',
+        serviceId: '22222222-2222-2222-2222-222222222222',
+        intakeFieldId: 'care-considerations-id',
+        slug: 'anxious',
+        label: 'Szorongó',
+        sortOrder: 0,
+        isActive: true,
+      },
+    ],
+  });
+
+  it('accepts a number value for number fields', () => {
+    const result = validateBookingIntake({ 'dog-weight-kg': 8.5 }, [weightField]);
+    assert.equal('code' in result, false);
+    if ('code' in result) return;
+    assert.equal(result.data['dog-weight-kg'], 8.5);
+  });
+
+  it('rejects a string that looks like a number for number fields', () => {
+    const result = validateBookingIntake(
+      { 'dog-weight-kg': '8.5' as unknown as number },
+      [weightField],
+    );
+    assert.equal('code' in result, true);
+    if (!('code' in result)) return;
+    assert.equal(result.code, 'invalid_intake');
+  });
+
+  it('rejects NaN and Infinity for number fields', () => {
+    assert.equal(
+      'code' in validateBookingIntake({ 'dog-weight-kg': NaN }, [weightField]),
+      true,
+    );
+    assert.equal(
+      'code' in validateBookingIntake(
+        { 'dog-weight-kg': Infinity },
+        [weightField],
+      ),
+      true,
+    );
+  });
+
+  it('rejects a number for a text field', () => {
+    const result = validateBookingIntake(
+      { 'dog-breed': 123 as unknown as string },
+      [requiredBreed],
+    );
+    assert.equal('code' in result, true);
+    if (!('code' in result)) return;
+    assert.equal(result.code, 'invalid_intake');
+  });
+
+  it('accepts a single string slug for single_choice', () => {
+    const result = validateBookingIntake({ 'dog-age-group': 'adult' }, [
+      ageField,
+    ]);
+    assert.equal('code' in result, false);
+    if ('code' in result) return;
+    assert.equal(result.data['dog-age-group'], 'adult');
+  });
+
+  it('rejects an array for single_choice', () => {
+    const result = validateBookingIntake(
+      { 'dog-age-group': ['adult'] as unknown as string },
+      [ageField],
+    );
+    assert.equal('code' in result, true);
+    if (!('code' in result)) return;
+    assert.equal(result.code, 'invalid_intake');
+  });
+
+  it('rejects an unknown single_choice slug', () => {
+    const result = validateBookingIntake(
+      { 'dog-age-group': 'unknown' },
+      [ageField],
+    );
+    assert.equal('code' in result, true);
+    if (!('code' in result)) return;
+    assert.equal(result.code, 'invalid_intake');
+  });
+
+  it('accepts a string[] for multiple_choice', () => {
+    const result = validateBookingIntake(
+      { 'care-considerations': ['anxious'] },
+      [careField],
+    );
+    assert.equal('code' in result, false);
+    if ('code' in result) return;
+    assert.deepEqual(result.data['care-considerations'], ['anxious']);
+  });
+
+  it('rejects a comma-separated string for multiple_choice', () => {
+    const result = validateBookingIntake(
+      { 'care-considerations': 'anxious' as unknown as string[] },
+      [careField],
+    );
+    assert.equal('code' in result, true);
+    if (!('code' in result)) return;
+    assert.equal(result.code, 'invalid_intake');
+  });
+
+  it('normalizes empty optional multiple_choice to absence', () => {
+    const result = validateBookingIntake(
+      { 'care-considerations': [] },
+      [careField],
+    );
+    assert.equal('code' in result, false);
+    if ('code' in result) return;
+    assert.equal('care-considerations' in result.data, false);
+  });
+
+  it('rejects duplicate slugs in multiple_choice', () => {
+    const result = validateBookingIntake(
+      { 'care-considerations': ['anxious', 'anxious'] },
+      [careField],
+    );
+    assert.equal('code' in result, true);
+    if (!('code' in result)) return;
+    assert.equal(result.code, 'invalid_intake');
+  });
+});
