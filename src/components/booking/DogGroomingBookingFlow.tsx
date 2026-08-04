@@ -40,6 +40,11 @@ interface BookingSuccess {
   slotEnd: string;
 }
 
+interface DogPhoto {
+  previewUrl: string;
+  fileName: string;
+}
+
 const STEP_LABELS = ['Szolgáltatás', 'Kutyusod', 'Részletek', 'Időpont', 'Adatok'];
 const INITIAL_INTAKE: BookingIntakeData = {
   'dog-name': '',
@@ -101,6 +106,84 @@ function isDogStepValid(intake: BookingIntakeData) {
   );
 }
 
+function DogFaceIcon({ className = '' }: { className?: string }) {
+  return (
+    <svg
+      class={className}
+      viewBox="0 0 48 48"
+      fill="none"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="m15.4 16.8-4.5-5.9c-.7-.9.2-2.2 1.3-1.8l7 2.2c1.4-.5 3-.8 4.8-.8s3.4.3 4.8.8l7-2.2c1.1-.4 2 .9 1.3 1.8l-4.5 5.9c1.4 1.8 2.2 4 2.2 6.5 0 6.1-4.8 10.9-10.8 10.9S13.2 29.4 13.2 23.3c0-2.5.8-4.7 2.2-6.5Z"
+        fill="currentColor"
+        fill-opacity=".12"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="1.8"
+      />
+      <path
+        d="M18.4 23.4h.01M29.6 23.4h.01"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-width="2.6"
+      />
+      <path
+        d="M24 24.8v2.2m-3.3 1.4c.9.9 2 1.3 3.3 1.3s2.4-.4 3.3-1.3"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="1.8"
+      />
+    </svg>
+  );
+}
+
+function ImagePlusIcon() {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
+      <path
+        d="M5.3 7.7c0-1.3 1.1-2.4 2.4-2.4h9.7c1.3 0 2.4 1.1 2.4 2.4v2.1"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="1.8"
+      />
+      <path
+        d="M5.3 20.1V22c0 1.3 1.1 2.4 2.4 2.4h9.7c1.3 0 2.4-1.1 2.4-2.4v-4.1"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="1.8"
+      />
+      <path
+        d="m5.7 19.2 4.2-4.4a1.4 1.4 0 0 1 2 0l2.1 2.2 1.4-1.5a1.4 1.4 0 0 1 2 0l2.1 2.2"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        stroke-width="1.8"
+      />
+      <circle cx="15.4" cy="9.5" r="1.1" fill="currentColor" />
+      <path
+        d="M24.2 16.2v8.1m-4-4h8"
+        stroke="currentColor"
+        stroke-linecap="round"
+        stroke-width="1.8"
+      />
+    </svg>
+  );
+}
+
+function DogAgeIcon({ age }: { age: 'puppy' | 'adult' | 'senior' }) {
+  return (
+    <span class="bundas-age-icon" data-age={age}>
+      <DogFaceIcon />
+    </span>
+  );
+}
+
 function SummaryBar({
   config,
   quote,
@@ -133,19 +216,56 @@ function SummaryBar({
   );
 }
 
-function DogPortrait({ intake, small = false }: { intake: BookingIntakeData; small?: boolean }) {
-  return (
-    <div class={`bundas-dog-portrait ${small ? 'is-small' : ''}`} aria-hidden="true">
-      <div class="bundas-dog-orbit">
-        <span>🐕</span>
-      </div>
-      {!small && (
-        <>
-          <strong>{String(intake['dog-name'] || 'Kutyusod')}</strong>
-          <span>{String(intake['dog-breed'] || 'Négylábú vendégünk')}</span>
-          <em>{dogSizeLabel(intake['dog-weight-kg'])}</em>
-        </>
+function DogPortrait({
+  intake,
+  small = false,
+  photoUrl,
+  photoName,
+  onPhotoChange,
+}: {
+  intake: BookingIntakeData;
+  small?: boolean;
+  photoUrl?: string;
+  photoName?: string;
+  onPhotoChange?: (event: Event) => void;
+}) {
+  const dogName = String(intake['dog-name'] || 'Kutyusod');
+  const photoTile = (
+    <div class={`bundas-photo-tile ${photoUrl ? 'has-photo' : ''}`}>
+      {photoUrl ? (
+        <img class="bundas-dog-photo" src={photoUrl} alt={`${dogName} fotója`} />
+      ) : (
+        <span class="bundas-photo-empty" aria-hidden="true">
+          <ImagePlusIcon />
+        </span>
       )}
+      {!small && photoUrl && <span class="bundas-photo-overlay">Kép cseréje</span>}
+    </div>
+  );
+
+  return (
+    <div class={`bundas-dog-portrait ${small ? 'is-small' : ''}`}>
+      {onPhotoChange ? (
+        <label class="bundas-photo-dropzone">
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            onChange={onPhotoChange}
+            aria-label="Kutyus fotójának feltöltése"
+          />
+          {photoTile}
+          {!small && (
+            <strong class="bundas-photo-label">
+              {photoUrl ? 'Kép cseréje' : 'Fotó hozzáadása · opcionális'}
+            </strong>
+          )}
+        </label>
+      ) : (
+        <div class="bundas-photo-dropzone is-static">{photoTile}</div>
+      )}
+      {!small && <small class="bundas-photo-meta" title={photoName}>
+        {photoName ? photoName : 'Opcionális · JPG, PNG vagy WEBP'}
+      </small>}
     </div>
   );
 }
@@ -154,12 +274,14 @@ function BookingAside({
   config,
   quote,
   intake,
+  photoUrl,
   slot,
   onEdit,
 }: {
   config: PublicPricingConfig;
   quote: PublicQuoteResponse;
   intake: BookingIntakeData;
+  photoUrl?: string;
   slot?: BookingSlot | null;
   onEdit: () => void;
 }) {
@@ -172,7 +294,7 @@ function BookingAside({
           <b>{timeLabel(slot.start)}</b>
         </div>
       )}
-      <DogPortrait intake={intake} small />
+      <DogPortrait intake={intake} small photoUrl={photoUrl} />
       <p class="bundas-dog-line">
         {String(intake['dog-name'])} · {String(intake['dog-breed'])} ·{' '}
         {String(intake['dog-weight-kg'])} kg
@@ -212,6 +334,7 @@ export default function DogGroomingBookingFlow({
   const [days, setDays] = useState<BookingDay[]>([]);
   const [selectedDay, setSelectedDay] = useState(0);
   const [slot, setSlot] = useState<BookingSlot | null>(null);
+  const [dogPhoto, setDogPhoto] = useState<DogPhoto | null>(null);
   const [owner, setOwner] = useState<OwnerData>({
     name: '',
     email: '',
@@ -224,6 +347,37 @@ export default function DogGroomingBookingFlow({
   const [message, setMessage] = useState('');
 
   const selectedDayData = days[selectedDay] ?? null;
+
+  useEffect(() => {
+    return () => {
+      if (dogPhoto) URL.revokeObjectURL(dogPhoto.previewUrl);
+    };
+  }, [dogPhoto]);
+
+  function handleDogPhotoChange(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setMessage('Kérlek, képfájlt válassz (JPG, PNG vagy WEBP).');
+      input.value = '';
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      setMessage('A kép legfeljebb 5 MB lehet.');
+      input.value = '';
+      return;
+    }
+
+    setDogPhoto({
+      previewUrl: URL.createObjectURL(file),
+      fileName: file.name,
+    });
+    input.value = '';
+    setMessage('');
+  }
 
   async function fetchConfig(slug: DogServiceSlug) {
     if (mode === 'mock') return createMockPricingConfig(slug);
@@ -512,7 +666,12 @@ export default function DogGroomingBookingFlow({
             <p>Négy rövid adat, és máris pontosabb becslést tudunk adni.</p>
           </div>
           <div class="bundas-dog-card">
-            <DogPortrait intake={intake} />
+            <DogPortrait
+              intake={intake}
+              photoUrl={dogPhoto?.previewUrl}
+              photoName={dogPhoto?.fileName}
+              onPhotoChange={handleDogPhotoChange}
+            />
             <div class="bundas-dog-form">
               <label>
                 Kutyus neve
@@ -551,16 +710,17 @@ export default function DogGroomingBookingFlow({
                   <legend>Életkor</legend>
                   <div class="bundas-age-grid">
                     {[
-                      ['puppy', '🐶', 'Kölyök', '0–12 hó'],
-                      ['adult', '🐕', 'Felnőtt', '1–7 év'],
-                      ['senior', '🦮', 'Senior', '7+ év'],
-                    ].map(([value, icon, label, caption]) => (
+                      ['puppy', 'Kölyök', '0–12 hó'],
+                      ['adult', 'Felnőtt', '1–7 év'],
+                      ['senior', 'Senior', '7+ év'],
+                    ].map(([value, label, caption]) => (
                       <button
                         type="button"
                         class={intake['dog-age-group'] === value ? 'selected' : ''}
                         onClick={() => updateIntake('dog-age-group', value)}
                       >
-                        <span>{icon}</span><strong>{label}</strong><small>{caption}</small>
+                        <DogAgeIcon age={value as 'puppy' | 'adult' | 'senior'} />
+                        <strong>{label}</strong><small>{caption}</small>
                       </button>
                     ))}
                   </div>
@@ -731,7 +891,14 @@ export default function DogGroomingBookingFlow({
                 </button>
               </div>
             </div>
-            <BookingAside config={config} quote={quote} intake={intake} slot={slot} onEdit={() => setStep(3)} />
+            <BookingAside
+              config={config}
+              quote={quote}
+              intake={intake}
+              photoUrl={dogPhoto?.previewUrl}
+              slot={slot}
+              onEdit={() => setStep(3)}
+            />
           </div>
         </section>
       )}
@@ -767,7 +934,14 @@ export default function DogGroomingBookingFlow({
                 </div>
               </div>
             </div>
-            <BookingAside config={config} quote={quote} intake={intake} slot={slot} onEdit={() => setStep(3)} />
+            <BookingAside
+              config={config}
+              quote={quote}
+              intake={intake}
+              photoUrl={dogPhoto?.previewUrl}
+              slot={slot}
+              onEdit={() => setStep(3)}
+            />
           </div>
         </section>
       )}
@@ -782,7 +956,7 @@ export default function DogGroomingBookingFlow({
             <div class="bundas-success-dog">
               <strong>{dateLabel(success.slotStart)}</strong>
               <b>{timeLabel(success.slotStart)}</b>
-              <DogPortrait intake={intake} small />
+              <DogPortrait intake={intake} small photoUrl={dogPhoto?.previewUrl} />
               <p>{String(intake['dog-name'])} · {String(intake['dog-breed'])} · {String(intake['dog-weight-kg'])} kg</p>
             </div>
             <div class="bundas-success-details">

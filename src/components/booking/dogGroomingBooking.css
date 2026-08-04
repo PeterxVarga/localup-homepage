@@ -381,8 +381,8 @@
 
 .bundas-dog-card {
   display: grid;
-  grid-template-columns: minmax(230px, 0.75fr) minmax(0, 1.55fr);
-  gap: 40px;
+  grid-template-columns: minmax(190px, 0.58fr) minmax(0, 1.72fr);
+  gap: 34px;
   padding: clamp(24px, 3vw, 38px);
 }
 
@@ -425,21 +425,107 @@
   align-content: start;
   justify-items: center;
   gap: 12px;
-  padding-right: 34px;
+  padding-right: 28px;
   border-right: 1px solid var(--line);
 }
 
-.bundas-dog-orbit {
+.bundas-photo-dropzone {
   position: relative;
   display: grid;
-  width: 230px;
-  height: 230px;
+  justify-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.bundas-photo-dropzone.is-static {
+  cursor: default;
+}
+
+.bundas-photo-dropzone:not(.is-static):hover .bundas-photo-tile {
+  border-color: #aeb5bc;
+  background: #e9ecef;
+  transform: translateY(-1px);
+}
+
+.bundas-photo-dropzone:focus-within .bundas-photo-tile {
+  outline: 3px solid rgba(139, 99, 238, 0.24);
+  outline-offset: 3px;
+}
+
+.bundas-photo-dropzone input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bundas-photo-tile {
+  position: relative;
+  display: grid;
+  width: 118px;
+  height: 118px;
   place-items: center;
-  border: 8px solid #fff;
-  border-radius: 50%;
-  background: linear-gradient(145deg, #f9e7dc, #eee7ff);
-  box-shadow: 0 0 0 2px var(--line), 0 14px 30px rgba(67, 43, 30, 0.12);
-  font-size: 8rem;
+  overflow: hidden;
+  border: 1px dashed #c2c8ce;
+  border-radius: 20px;
+  color: #8a949d;
+  background: #eef0f2;
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.bundas-photo-tile.has-photo {
+  border-style: solid;
+  border-color: #d8dde1;
+  background: #e5e8ea;
+}
+
+.bundas-photo-empty {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 15px;
+  color: #8a949d;
+  background: #e1e5e8;
+}
+
+.bundas-photo-empty svg {
+  width: 30px;
+  height: 30px;
+}
+
+.bundas-photo-overlay {
+  position: absolute;
+  right: 7px;
+  bottom: 7px;
+  left: 7px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  color: #fff;
+  background: rgba(16, 47, 109, 0.78);
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.bundas-photo-label {
+  color: var(--navy);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.bundas-photo-meta {
+  display: block;
+  max-width: 150px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.68rem;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bundas-dog-portrait.is-small {
@@ -447,23 +533,21 @@
   border: 0;
 }
 
-.bundas-dog-portrait.is-small .bundas-dog-orbit {
-  width: 130px;
-  height: 130px;
-  border-width: 5px;
-  font-size: 4.6rem;
+.bundas-dog-portrait.is-small .bundas-photo-tile {
+  width: 82px;
+  height: 82px;
+  border-radius: 17px;
 }
 
-.bundas-dog-portrait > strong {
-  margin: 2px 0 0;
-  color: var(--navy);
-  font-size: 2rem;
-  font-weight: 900;
+.bundas-dog-portrait.is-small .bundas-photo-empty {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
 }
 
-.bundas-dog-portrait > span {
-  color: var(--muted);
-  text-align: center;
+.bundas-dog-portrait.is-small .bundas-photo-empty svg {
+  width: 23px;
+  height: 23px;
 }
 
 .bundas-dog-form {
@@ -525,6 +609,54 @@
   color: var(--navy);
   background: #fff;
   cursor: pointer;
+}
+
+.bundas-age-grid button {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  grid-template-areas: "icon label" "icon caption";
+  min-height: 86px;
+  align-items: center;
+  column-gap: 10px;
+  text-align: left;
+}
+
+.bundas-age-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  grid-area: icon;
+  place-items: center;
+  border-radius: 12px;
+  color: #d97820;
+  background: #fff1e4;
+}
+
+.bundas-age-icon[data-age="adult"] {
+  color: #5b9d92;
+  background: #e9f7f3;
+}
+
+.bundas-age-icon[data-age="senior"] {
+  color: #8764b9;
+  background: #f1eaff;
+}
+
+.bundas-age-icon svg {
+  width: 25px;
+  height: 25px;
+}
+
+.bundas-age-grid button > strong {
+  grid-area: label;
+  font-size: 0.84rem;
+}
+
+.bundas-age-grid button > small {
+  grid-area: caption;
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .bundas-age-grid button.selected,
